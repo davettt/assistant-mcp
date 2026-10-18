@@ -1,4 +1,4 @@
-# Publishes to npm when a version tag is pushed. No npm token: npm's trusted publishing
+# Stages a release on npm when a version tag is pushed; the developer promotes it there. No npm token: npm's trusted publishing
 # trusts this repository + this workflow filename through GitHub's OIDC token, and
 # provenance is generated automatically for a public repo and package.
 #
@@ -6,7 +6,8 @@
 #   1. The package must already exist, so the FIRST version is published by the developer
 #      from a terminal with 2FA (npm publish --access public), then
 #   2. npmjs.com → package → Settings → Trusted publishing → GitHub Actions:
-#      owner davettt, repository assistant-mcp, workflow filename publish.yml.
+#      owner davettt, repository assistant-mcp, workflow filename publish.yml, with
+#      "Allow npm publish" left unticked (staged publishing, npm's recommendation).
 #      The connection expires if no publish succeeds within 2 days of creating it.
 #   3. Package Settings → Publishing access → require 2FA and disallow tokens.
 # The tag's version must match package.json; the job checks before publishing.
@@ -37,4 +38,6 @@ jobs:
           tag="${GITHUB_REF_NAME#v}"
           version="$(node -p "require('./package.json').version")"
           test "$tag" = "$version" || { echo "tag v$tag != package.json $version"; exit 1; }
-      - run: npm publish --access public
+      # Staged: the version is uploaded but not live until the developer promotes it on
+      # npmjs.com with 2FA, so the workflow alone can never publish.
+      - run: npm stage publish --access public
