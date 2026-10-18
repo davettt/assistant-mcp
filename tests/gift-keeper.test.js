@@ -120,10 +120,11 @@ describe(
       });
       const soon = new Date();
       soon.setDate(soon.getDate() + 10);
+      const soonKey = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, '0')}-${String(soon.getDate()).padStart(2, '0')}`;
       await post('/api/occasions', {
         name: "Bob's birthday",
         type: 'birthday',
-        date: soon.toISOString().slice(0, 10),
+        date: soonKey,
         recurrence: 'yearly',
         personIds: [bob.id],
         budget: 50,
@@ -139,6 +140,8 @@ describe(
       assert.equal(up.count, 1);
       assert.equal(up.occasions[0].people[0], 'Bob');
       assert.equal(up.occasions[0].giftChosen, false);
+      assert.equal(up.occasions[0].date, soonKey, 'calendar day must not shift with the timezone');
+      assert.equal(up.occasions[0].daysUntil, 10);
       const on = parse(await client.callTool({ name: 'whats_on', arguments: { days: 30 } }));
       assert.ok(on.items.some((i) => i.app === 'Gift Keeper' && i.title.includes('Bob')));
     });

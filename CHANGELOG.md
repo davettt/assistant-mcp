@@ -2,6 +2,11 @@
 
 ## [0.1.0] - 2026-10-18
 
+### Fixed
+
+- Gift Keeper dates came out a day early east of UTC: the occasion date is local midnight as an ISO timestamp and was cut to its UTC day; it is now formatted in local time (found on real data, 2026-10-18)
+- `package.json` version set back to 0.1.0: a Gift Keeper version bump had been run in this folder by mistake and committed as 1.3.0; nothing was published under that number
+
 ### Added
 
 - MCP server over stdio (`src/index.js`) for Claude Desktop and Claude Code, with tools `whats_on` (upcoming items across every available app), `open_app` (opens an app only after the user agrees), and Due Again tools `due_again_items`, `due_again_history`, `due_again_add_item` (category given by name; a miss returns the category list) and `due_again_complete`.

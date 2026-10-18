@@ -3,6 +3,7 @@
 // "Allow assistant access" is on (gift-keeper/server/assistant.js).
 import { z } from 'zod';
 import { appConnection, apiCall, notAvailable } from '../connection.js';
+import { todayLocal } from '../dates.js';
 
 export const app = {
   id: 'gift-keeper',
@@ -16,7 +17,9 @@ function summariseOccasion(u) {
     occasionId: u.occasion.id,
     name: u.occasion.name,
     type: u.occasion.type,
-    date: u.nextDate.slice(0, 10),
+    // nextDate is local midnight as an ISO timestamp; format it in local time, or the
+    // calendar day shifts back by one for anyone east of UTC.
+    date: todayLocal(new Date(u.nextDate)),
     daysUntil: u.daysUntil,
     people: u.people.map((p) => p.name),
     giftChosen: u.hasGiftSelected,
