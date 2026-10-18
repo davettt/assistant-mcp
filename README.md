@@ -1,7 +1,7 @@
 # Tiong Creative assistant (MCP server)
 
 Lets an AI assistant on your Mac, such as Claude Desktop, use your Tiong Creative apps while
-they are open. Ask "what's on this month" and it reads Due Again, Gift Keeper and Client Manager; say "mark the car insurance
+they are open. Ask "what's on this month" and it reads Due Again, Gift Keeper, Client Manager and Lists & Notes; say "mark the car insurance
 done" and Due Again records it and works out the next date, the same as if you had clicked.
 
 It only works with the apps, and only while each app has **Settings → Assistant → Allow
@@ -15,6 +15,7 @@ nothing else happens.
 | Due Again 1.1.0 or later      | items with status and next due date, an item's history                                                           | add an item, record that an item was done            |
 | Gift Keeper 1.3.0 or later    | people with interests, sizes and preferences; upcoming occasions with budget, spend and whether a gift is chosen | add a gift idea for a person, mark a gift as given   |
 | Client Manager 1.6.0 or later | pending reminders, open tasks, invoices owing with totals and balance, one client with their jobs                | add a reminder, add a task to a job, log an activity |
+| Lists & Notes 1.22.0 or later | lists with their items, notes with previews, the full text of a note                                             | nothing yet                                          |
 
 More apps follow, and the assistant can also open an app for you, but only after you agree.
 
