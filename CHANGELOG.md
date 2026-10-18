@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.0] - 2026-10-19
+
+### Added
+
+- `npx @tiongcreative/assistant-mcp install` sets the assistant up in Claude Desktop: adds one entry to its config file with the full path to npx (a desktop app cannot see the shell's PATH), keeps a backup, refuses to touch a file it cannot parse, and prints the next steps. `uninstall` removes the entry; `status` reports it. `--allow-fresh` passes npm's release-age override into the entry for Macs that refuse packages younger than a few days. Unit tests cover create, merge, idempotence, corrupt files and removal.
+
+### Changed
+
+- README setup is now the one-command path.
+
 ## [0.1.1] - 2026-10-19
 
 ### Changed

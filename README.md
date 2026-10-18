@@ -21,23 +21,24 @@ More apps follow, and the assistant can also open an app for you, but only after
 
 ## Setup
 
-You need Node.js 20 or later and Claude Desktop. Add this to Claude Desktop's config file
-(Settings → Developer → Edit Config), then restart Claude Desktop:
+You need Node.js and Claude Desktop. If you do not have Node.js, install it from
+nodejs.org (the LTS download), which also gives you the `npx` command used below.
 
-```json
-{
-  "mcpServers": {
-    "tiongcreative": {
-      "command": "npx",
-      "args": ["-y", "@tiongcreative/assistant-mcp"]
-    }
-  }
-}
+Open Terminal and run:
+
+```
+npx @tiongcreative/assistant-mcp install
 ```
 
-In each app, turn on **Allow assistant access** in Settings. Open the app, then ask Claude
-what's on. The assistant only offers tools for the apps installed on your Mac, checked when it
-starts, so after installing another app restart Claude Desktop once.
+It adds the assistant to Claude Desktop's settings and keeps a backup of the previous file.
+Then quit Claude Desktop completely, open it again, and allow the "tiongcreative" server the
+first time it asks. In each app, turn on **Allow assistant access** in Settings. With the apps
+open, ask Claude what's on this week.
+
+The assistant only offers tools for the apps installed on your Mac, checked when Claude
+Desktop starts it, so after installing another app restart Claude Desktop once.
+
+To remove it: `npx @tiongcreative/assistant-mcp uninstall`. To check: `npx @tiongcreative/assistant-mcp status`.
 
 For Claude Code: `claude mcp add tiongcreative -- npx -y @tiongcreative/assistant-mcp`.
 
