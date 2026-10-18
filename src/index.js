@@ -13,11 +13,12 @@ import { z } from 'zod';
 import { ApiError } from './connection.js';
 import * as dueAgain from './apps/due-again.js';
 import * as giftKeeper from './apps/gift-keeper.js';
+import * as clientManager from './apps/client-manager.js';
 
 const { version } = createRequire(import.meta.url)('../package.json');
 
 // One entry per app. Add an app by adding a module with the same shape.
-const APPS = [dueAgain, giftKeeper];
+const APPS = [dueAgain, giftKeeper, clientManager];
 
 function text(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };

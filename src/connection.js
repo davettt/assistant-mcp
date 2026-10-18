@@ -16,8 +16,14 @@ export function dataRoot() {
   return process.env.TC_DATA_ROOT || path.join(os.homedir(), 'Library', 'Application Support');
 }
 
+// Most apps keep their files in a local_data folder under their data dir; an app that
+// writes to the data dir itself says so with tokenFile.
 function tokenFile(app) {
-  return path.join(dataRoot(), app.dataDir, 'local_data', 'assistant.json');
+  return path.join(
+    dataRoot(),
+    app.dataDir,
+    app.tokenFile ?? path.join('local_data', 'assistant.json'),
+  );
 }
 
 function processAlive(pid) {
