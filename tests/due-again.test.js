@@ -27,7 +27,7 @@ function freePort() {
   });
 }
 
-async function waitFor(url, attempts = 50) {
+async function waitFor(url, attempts = 200) {
   for (let i = 0; i < attempts; i++) {
     try {
       const res = await fetch(url);

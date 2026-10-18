@@ -100,6 +100,100 @@ export const tools = [
     },
   },
   {
+    name: 'gift_keeper_ideas',
+    description:
+      "Gift ideas saved in Gift Keeper: the pool of possible gifts, including ones not yet tied to an occasion. Filter by person's name or search the idea text. This is where to look before suggesting something new.",
+    input: z.object({
+      person: z.string().max(100).optional(),
+      search: z.string().max(100).optional(),
+    }),
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const [ideas, people, occasions] = await Promise.all([
+        apiCall(conn, 'GET', '/api/ideas'),
+        apiCall(conn, 'GET', '/api/people'),
+        apiCall(conn, 'GET', '/api/occasions'),
+      ]);
+      const personName = new Map(people.map((p) => [p.id, p.name]));
+      const occasionName = new Map(occasions.map((o) => [o.id, o.name]));
+      let list = ideas.map((i) => ({
+        id: i.id,
+        idea: i.name,
+        person: i.personId ? (personName.get(i.personId) ?? null) : null,
+        occasion: i.occasionId ? (occasionName.get(i.occasionId) ?? null) : null,
+        price: i.price ?? null,
+        priority: i.priority ?? 'normal',
+        url: i.url || undefined,
+        notes: i.notes || undefined,
+        added: i.dateAdded ?? null,
+      }));
+      if (input.person) {
+        const who = input.person.toLowerCase();
+        list = list.filter((i) => i.person?.toLowerCase() === who);
+      }
+      if (input.search) {
+        const q = input.search.toLowerCase();
+        list = list.filter(
+          (i) => i.idea.toLowerCase().includes(q) || (i.notes ?? '').toLowerCase().includes(q),
+        );
+      }
+      return { app: app.name, count: list.length, ideas: list };
+    },
+  },
+  {
+    name: 'gift_keeper_gifts',
+    description:
+      'Gifts being tracked in Gift Keeper at any stage (idea, shortlisted, ordered, bought, arrived, wrapped, given, cancelled), with who and which occasion each is for. Filter by person or status. Given and cancelled gifts are left out unless asked for.',
+    input: z.object({
+      person: z.string().max(100).optional(),
+      status: z
+        .enum([
+          'open',
+          'idea',
+          'shortlisted',
+          'ordered',
+          'bought',
+          'arrived',
+          'wrapped',
+          'given',
+          'cancelled',
+          'all',
+        ])
+        .default('open')
+        .describe('open = everything not yet given or cancelled'),
+    }),
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const [gifts, people, occasions] = await Promise.all([
+        apiCall(conn, 'GET', '/api/gifts'),
+        apiCall(conn, 'GET', '/api/people'),
+        apiCall(conn, 'GET', '/api/occasions'),
+      ]);
+      const personName = new Map(people.map((p) => [p.id, p.name]));
+      const occasionName = new Map(occasions.map((o) => [o.id, o.name]));
+      let list = gifts.map((g) => ({
+        id: g.id,
+        name: g.name,
+        status: g.status,
+        person: g.personId ? (personName.get(g.personId) ?? null) : null,
+        occasion: g.occasionId ? (occasionName.get(g.occasionId) ?? null) : null,
+        price: g.price ?? null,
+        plannedDate: g.plannedDate ?? null,
+        notes: g.notes || undefined,
+      }));
+      if (input.status === 'open')
+        list = list.filter((g) => !['given', 'cancelled'].includes(g.status));
+      else if (input.status !== 'all') list = list.filter((g) => g.status === input.status);
+      if (input.person) {
+        const who = input.person.toLowerCase();
+        list = list.filter((g) => g.person?.toLowerCase() === who);
+      }
+      return { app: app.name, count: list.length, gifts: list };
+    },
+  },
+  {
     name: 'gift_keeper_add_idea',
     description:
       'Save a gift idea in Gift Keeper for a person, by name. If the name does not match, the reply lists the people to choose from. Optional link, price, notes and priority.',

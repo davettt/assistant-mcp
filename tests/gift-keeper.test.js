@@ -27,7 +27,7 @@ function freePort() {
   });
 }
 
-async function waitFor(url, attempts = 50) {
+async function waitFor(url, attempts = 200) {
   for (let i = 0; i < attempts; i++) {
     try {
       const res = await fetch(url);
@@ -168,6 +168,19 @@ describe(
       assert.equal(ideas[0].name, 'Hand grinder');
     });
 
+    it('lists the ideas pool and gifts at any stage', async () => {
+      const ideas = parse(await client.callTool({ name: 'gift_keeper_ideas', arguments: {} }));
+      assert.equal(ideas.count, 1);
+      assert.equal(ideas.ideas[0].idea, 'Hand grinder');
+      assert.equal(ideas.ideas[0].person, 'Bob');
+      const byPerson = parse(
+        await client.callTool({ name: 'gift_keeper_ideas', arguments: { person: 'nobody' } }),
+      );
+      assert.equal(byPerson.count, 0);
+      const none = parse(await client.callTool({ name: 'gift_keeper_gifts', arguments: {} }));
+      assert.equal(none.count, 0, 'no gifts tracked yet');
+    });
+
     it('marks a gift as given', async () => {
       const up = parse(await client.callTool({ name: 'gift_keeper_upcoming', arguments: {} }));
       const occasionId = up.occasions[0].occasionId;
@@ -187,6 +200,16 @@ describe(
       );
       assert.equal(out.changed, 'given');
       assert.equal(out.gift.status, 'given');
+      const open = parse(await client.callTool({ name: 'gift_keeper_gifts', arguments: {} }));
+      assert.equal(open.count, 0, 'a given gift is not open');
+      const given = parse(
+        await client.callTool({
+          name: 'gift_keeper_gifts',
+          arguments: { status: 'given', person: 'Bob' },
+        }),
+      );
+      assert.equal(given.count, 1);
+      assert.equal(given.gifts[0].occasion, "Bob's birthday");
     });
 
     it('adds a person and an occasion, updates a gift, completes the occasion', async () => {
