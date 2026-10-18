@@ -240,6 +240,125 @@ export const tools = [
       };
     },
   },
+  {
+    name: 'due_again_update_item',
+    description:
+      'Change a Due Again item: move its next due date, rename it, change the expected cost, notes or category. Use the item id from due_again_items. Only the fields given change. To record that it was done use due_again_complete; to skip this occurrence use due_again_skip.',
+    input: z.object({
+      itemId: z.string().min(1),
+      nextDue: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+        .describe('New next due date, YYYY-MM-DD'),
+      title: z.string().trim().min(1).max(200).optional(),
+      expectedCost: z.number().min(0).nullable().optional(),
+      costVaries: z.boolean().optional(),
+      notes: z.string().max(10000).optional(),
+      description: z.string().max(2000).optional(),
+      category: z.string().max(50).optional().describe('Category name'),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const { itemId, category, ...changes } = input;
+      if (category) {
+        const categories = await apiCall(conn, 'GET', '/api/categories');
+        const match = categories.find(
+          (c) => c.name.toLowerCase() === category.trim().toLowerCase(),
+        );
+        if (!match) {
+          return {
+            app: app.name,
+            changed: false,
+            message: `No category called "${category}".`,
+            categories: categories.map((c) => c.name),
+          };
+        }
+        changes.categoryId = match.id;
+      }
+      if (Object.keys(changes).length === 0) {
+        return {
+          app: app.name,
+          changed: false,
+          message: 'Nothing to change: give a date, title, cost, notes, description or category.',
+        };
+      }
+      const item = await apiCall(conn, 'PUT', `/api/items/${encodeURIComponent(itemId)}`, changes);
+      const ctx = await loadContext(conn);
+      return {
+        app: app.name,
+        changed: true,
+        item: summarise(item, ctx.categories, ctx.today, ctx.dueSoonDays),
+      };
+    },
+  },
+  {
+    name: 'due_again_skip',
+    description:
+      'Skip the current occurrence of a Due Again item without recording it as done; the next due date moves on by its schedule. Use the item id from due_again_items.',
+    input: z.object({
+      itemId: z.string().min(1),
+      date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+        .describe('The day it was skipped, defaults to today'),
+      note: z.string().max(500).optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const result = await apiCall(
+        conn,
+        'POST',
+        `/api/items/${encodeURIComponent(input.itemId)}/skip`,
+        {
+          date: input.date ?? todayLocal(),
+          note: input.note ?? '',
+        },
+      );
+      return {
+        app: app.name,
+        changed: 'skipped',
+        item: { id: result.item.id, title: result.item.title, nextDue: result.item.nextDue },
+      };
+    },
+  },
+  {
+    name: 'due_again_reschedule',
+    description:
+      'Move just the current occurrence of a Due Again item to another date, keeping its series as it is. For a permanent change of schedule use due_again_update_item.',
+    input: z.object({
+      itemId: z.string().min(1),
+      date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .describe('The new date for this occurrence'),
+      note: z.string().max(500).optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const result = await apiCall(
+        conn,
+        'POST',
+        `/api/items/${encodeURIComponent(input.itemId)}/reschedule`,
+        {
+          date: input.date,
+          note: input.note ?? '',
+        },
+      );
+      return {
+        app: app.name,
+        changed: 'rescheduled',
+        item: { id: result.item.id, title: result.item.title, nextDue: result.item.nextDue },
+      };
+    },
+  },
 ];
 
 /** Lines for the cross-app "what's on" view. */

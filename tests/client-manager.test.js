@@ -101,6 +101,8 @@ describe(
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name);
       for (const n of [
+        'client_manager_update_task',
+        'client_manager_update_reminder',
         'client_manager_reminders',
         'client_manager_tasks',
         'client_manager_invoices',
@@ -187,6 +189,87 @@ describe(
       assert.ok(cm.some((i) => i.title.startsWith('Invoice') && i.daysUntilDue === -5));
     });
 
+    it('moves a task to today, marks it done, and completes a reminder', async () => {
+      const tasks = parse(await client.callTool({ name: 'client_manager_tasks', arguments: {} }));
+      const taskId = tasks.tasks[0].id;
+      const today = key(new Date());
+      const moved = parse(
+        await client.callTool({
+          name: 'client_manager_update_task',
+          arguments: { taskId, dueDate: today },
+        }),
+      );
+      assert.equal(moved.changed, true);
+      assert.equal(moved.task.dueDate, today);
+      assert.equal(moved.task.daysUntilDue, 0);
+      const done = parse(
+        await client.callTool({
+          name: 'client_manager_update_task',
+          arguments: { taskId, status: 'done' },
+        }),
+      );
+      assert.equal(done.task.status, 'done');
+      const open = parse(await client.callTool({ name: 'client_manager_tasks', arguments: {} }));
+      assert.equal(open.count, 0, 'a done task leaves the open list');
+      const nothing = parse(
+        await client.callTool({ name: 'client_manager_update_task', arguments: { taskId } }),
+      );
+      assert.equal(nothing.changed, false);
+
+      const reminders = parse(
+        await client.callTool({ name: 'client_manager_reminders', arguments: {} }),
+      );
+      const reminderId = reminders.reminders[0].id;
+      const completed = parse(
+        await client.callTool({
+          name: 'client_manager_update_reminder',
+          arguments: { reminderId, status: 'completed' },
+        }),
+      );
+      assert.equal(completed.changed, true);
+      assert.equal(completed.reminder.status, 'completed');
+      const left = parse(
+        await client.callTool({ name: 'client_manager_reminders', arguments: {} }),
+      );
+      assert.equal(left.count, 0, 'a completed reminder leaves the list');
+    });
+
+    it('adds a client and a job, and updates the job', async () => {
+      const dup = parse(
+        await client.callTool({
+          name: 'client_manager_add_client',
+          arguments: { name: 'jane smith' },
+        }),
+      );
+      assert.equal(dup.added, false);
+      const sam = parse(
+        await client.callTool({
+          name: 'client_manager_add_client',
+          arguments: { name: 'Sam Lee', email: 'sam@example.com', company: 'Lee & Co' },
+        }),
+      );
+      assert.equal(sam.added, true);
+      const job = parse(
+        await client.callTool({
+          name: 'client_manager_add_job',
+          arguments: { client: 'sam lee', title: 'Logo refresh', amount: 800 },
+        }),
+      );
+      assert.equal(job.added, true);
+      assert.equal(job.job.client, 'Sam Lee');
+      const upd = parse(
+        await client.callTool({
+          name: 'client_manager_update_job',
+          arguments: { jobId: job.job.id, status: 'on-hold' },
+        }),
+      );
+      assert.equal(upd.job.status, 'on-hold');
+      const who = parse(
+        await client.callTool({ name: 'client_manager_client', arguments: { name: 'Sam Lee' } }),
+      );
+      assert.equal(who.jobs[0].status, 'on-hold');
+    });
+
     it('adds a reminder, a task and an activity by names, listing options on a miss', async () => {
       const miss = parse(
         await client.callTool({
@@ -195,7 +278,7 @@ describe(
         }),
       );
       assert.equal(miss.added, false);
-      assert.deepEqual(miss.clients, ['Jane Smith']);
+      assert.ok(miss.clients.includes('Jane Smith'));
       const rem = parse(
         await client.callTool({
           name: 'client_manager_add_reminder',

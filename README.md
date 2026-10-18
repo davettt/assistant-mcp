@@ -10,12 +10,12 @@ nothing else happens.
 
 ## Apps
 
-| App                           | Reads                                                                                                            | Changes                                              |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| Due Again 1.1.0 or later      | items with status and next due date, an item's history                                                           | add an item, record that an item was done            |
-| Gift Keeper 1.3.0 or later    | people with interests, sizes and preferences; upcoming occasions with budget, spend and whether a gift is chosen | add a gift idea for a person, mark a gift as given   |
-| Client Manager 1.6.0 or later | pending reminders, open tasks, invoices owing with totals and balance, one client with their jobs                | add a reminder, add a task to a job, log an activity |
-| Lists & Notes 1.22.0 or later | lists with their items, notes with previews, the full text of a note                                             | nothing yet                                          |
+| App                           | Reads                                                                                                            | Changes                                                                                    |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Due Again 1.1.0 or later      | items with status and next due date, an item's history                                                           | add an item, record that an item was done                                                  |
+| Gift Keeper 1.3.0 or later    | people with interests, sizes and preferences; upcoming occasions with budget, spend and whether a gift is chosen | add a gift idea for a person, mark a gift as given                                         |
+| Client Manager 1.6.0 or later | pending reminders, open tasks, invoices owing with totals and balance, one client with their jobs                | add a client, a job, a reminder or a task, change a job, task or reminder, log an activity |
+| Lists & Notes 1.22.0 or later | lists with their items, notes with previews, the full text of a note                                             | nothing yet                                                                                |
 
 More apps follow, and the assistant can also open an app for you, but only after you agree.
 
@@ -35,8 +35,9 @@ You need Node.js 20 or later and Claude Desktop. Add this to Claude Desktop's co
 }
 ```
 
-In each app, turn on **Allow assistant access** in Settings → Assistant. Open the app, then ask
-Claude what's on.
+In each app, turn on **Allow assistant access** in Settings. Open the app, then ask Claude
+what's on. The assistant only offers tools for the apps installed on your Mac, checked when it
+starts, so after installing another app restart Claude Desktop once.
 
 For Claude Code: `claude mcp add tiongcreative -- npx -y @tiongcreative/assistant-mcp`.
 

@@ -26,6 +26,20 @@ function tokenFile(app) {
   );
 }
 
+/**
+ * Whether the app exists on this Mac: its bundle in Applications, or a data folder it has
+ * written. Tools are only offered for installed apps, so an assistant never tells the user
+ * to turn on a switch in an app they do not have.
+ */
+export function isInstalled(app) {
+  if (process.env.TC_DATA_ROOT) return fs.existsSync(path.join(dataRoot(), app.dataDir));
+  const bundles = [
+    path.join('/Applications', `${app.bundleName}.app`),
+    path.join(os.homedir(), 'Applications', `${app.bundleName}.app`),
+  ];
+  return bundles.some((b) => fs.existsSync(b)) || fs.existsSync(path.join(dataRoot(), app.dataDir));
+}
+
 function processAlive(pid) {
   try {
     process.kill(pid, 0);
@@ -44,7 +58,9 @@ export async function appConnection(app) {
   try {
     record = JSON.parse(fs.readFileSync(tokenFile(app), 'utf8'));
   } catch (err) {
-    if (err.code === 'ENOENT') return { ok: false, reason: 'not-enabled' };
+    if (err.code === 'ENOENT') {
+      return { ok: false, reason: isInstalled(app) ? 'not-enabled' : 'not-installed' };
+    }
     return { ok: false, reason: 'unreadable', detail: err.message };
   }
   if (!record || typeof record.port !== 'number' || typeof record.token !== 'string') {
@@ -90,7 +106,8 @@ export async function apiCall(conn, method, urlPath, body) {
 /** The result a tool returns when the app cannot be reached. */
 export function notAvailable(app, conn) {
   const reasons = {
-    'not-enabled': `${app.name} is not sharing with assistants. In ${app.name}, open Settings → Assistant and turn on "Allow assistant access", or the app is not installed.`,
+    'not-enabled': `${app.name} is installed but not sharing with assistants. In ${app.name}, open Settings and turn on "Allow assistant access".`,
+    'not-installed': `${app.name} is not installed on this Mac.`,
     'not-running': `${app.name} is not open. Ask the user whether to open it, then call open_app with app "${app.id}".`,
     unreadable: `${app.name}'s assistant file could not be read: ${conn.detail ?? 'unknown error'}.`,
   };

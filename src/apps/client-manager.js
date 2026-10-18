@@ -375,6 +375,186 @@ export const tools = [
       };
     },
   },
+  {
+    name: 'client_manager_update_task',
+    description:
+      'Change a task in Client Manager: move its due date, mark it to do, in progress or done, or edit its title or notes. Use the task id from client_manager_tasks. Only the fields given change.',
+    input: z.object({
+      taskId: z.string().min(1),
+      dueDate: date.nullable().optional().describe('New due date, or null to clear it'),
+      status: z.enum(['todo', 'in-progress', 'done']).optional(),
+      title: z.string().trim().min(1).max(200).optional(),
+      notes: z.string().max(2000).optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const { taskId, ...changes } = input;
+      if (Object.keys(changes).length === 0) {
+        return {
+          app: app.name,
+          changed: false,
+          message: 'Nothing to change: give a due date, status, title or notes.',
+        };
+      }
+      const task = await apiCall(conn, 'PUT', `/api/tasks/${encodeURIComponent(taskId)}`, changes);
+      const [{ byId }, jobs] = await Promise.all([
+        clientsByIdAndName(conn),
+        apiCall(conn, 'GET', '/api/jobs'),
+      ]);
+      const line = taskLine(task, new Map(jobs.map((j) => [j.id, j])), byId, todayLocal());
+      return { app: app.name, changed: true, task: line };
+    },
+  },
+  {
+    name: 'client_manager_update_reminder',
+    description:
+      'Change a reminder in Client Manager: complete it (status "completed"), move its due date, snooze it to a date, or edit its title, notes or priority. Use the reminder id from client_manager_reminders. Completing a recurring reminder makes the app create the next one.',
+    input: z.object({
+      reminderId: z.string().min(1),
+      status: z.enum(['pending', 'completed', 'snoozed']).optional(),
+      dueDate: date.optional(),
+      snoozedUntil: date.optional().describe('With status "snoozed": the date it comes back'),
+      title: z.string().trim().min(1).max(200).optional(),
+      notes: z.string().max(2000).optional(),
+      priority: z.enum(['normal', 'high']).optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const { reminderId, ...changes } = input;
+      if (Object.keys(changes).length === 0) {
+        return {
+          app: app.name,
+          changed: false,
+          message: 'Nothing to change: give a status, due date, title, notes or priority.',
+        };
+      }
+      if (changes.status === 'completed') changes.completedAt = new Date().toISOString();
+      if (changes.status === 'pending') {
+        changes.completedAt = null;
+        changes.snoozedUntil = null;
+      }
+      const reminder = await apiCall(
+        conn,
+        'PUT',
+        `/api/reminders/${encodeURIComponent(reminderId)}`,
+        changes,
+      );
+      const { byId } = await clientsByIdAndName(conn);
+      const line = reminderLine(reminder, byId, todayLocal());
+      return {
+        app: app.name,
+        changed: true,
+        reminder: line,
+        note:
+          reminder.status === 'completed' && reminder.recurrence && reminder.recurrence !== 'none'
+            ? `Recurring (${reminder.recurrence}): Client Manager has created the next one.`
+            : undefined,
+      };
+    },
+  },
+  {
+    name: 'client_manager_add_client',
+    description: 'Add a client to Client Manager with optional email, phone and company.',
+    input: z.object({
+      name: z.string().trim().min(1).max(200),
+      email: z.string().email().max(200).optional(),
+      phone: z.string().max(50).optional(),
+      company: z.string().max(200).optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const { find } = await clientsByIdAndName(conn);
+      if (find(input.name))
+        return { app: app.name, added: false, message: `${input.name} is already a client.` };
+      const client = await apiCall(conn, 'POST', '/api/clients', {
+        name: input.name,
+        ...(input.email ? { email: input.email } : {}),
+        ...(input.phone ? { phone: input.phone } : {}),
+        ...(input.company ? { company: input.company } : {}),
+      });
+      return {
+        app: app.name,
+        added: true,
+        client: { id: client.id, name: client.name, email: client.email || undefined },
+      };
+    },
+  },
+  {
+    name: 'client_manager_add_job',
+    description:
+      'Add a job for a client in Client Manager, by client name, with an optional description, amount and start date. If the name does not match, the reply lists the clients.',
+    input: z.object({
+      client: z.string().min(1).max(200),
+      title: z.string().trim().min(1).max(200),
+      description: z.string().max(5000).optional(),
+      amount: z.number().min(0).optional(),
+      startDate: date.optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const { clients, find } = await clientsByIdAndName(conn);
+      const client = find(input.client);
+      if (!client) return missingClient(input.client, clients);
+      const job = await apiCall(conn, 'POST', '/api/jobs', {
+        clientId: client.id,
+        title: input.title,
+        status: 'active',
+        ...(input.description ? { description: input.description } : {}),
+        ...(input.amount !== undefined ? { amount: input.amount } : {}),
+        ...(input.startDate ? { startDate: input.startDate } : {}),
+      });
+      return {
+        app: app.name,
+        added: true,
+        job: {
+          id: job.id,
+          title: job.title,
+          client: client.name,
+          status: job.status,
+          amount: job.amount ?? null,
+        },
+      };
+    },
+  },
+  {
+    name: 'client_manager_update_job',
+    description:
+      'Change a job in Client Manager: its status (active, on-hold, completed, cancelled), title, description or amount. Use a job id from client_manager_client.',
+    input: z.object({
+      jobId: z.string().min(1),
+      status: z.enum(['active', 'on-hold', 'completed', 'cancelled']).optional(),
+      title: z.string().trim().min(1).max(200).optional(),
+      description: z.string().max(5000).optional(),
+      amount: z.number().min(0).nullable().optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const { jobId, ...changes } = input;
+      if (Object.keys(changes).length === 0) {
+        return {
+          app: app.name,
+          changed: false,
+          message: 'Nothing to change: give a status, title, description or amount.',
+        };
+      }
+      const job = await apiCall(conn, 'PUT', `/api/jobs/${encodeURIComponent(jobId)}`, changes);
+      return {
+        app: app.name,
+        changed: true,
+        job: { id: job.id, title: job.title, status: job.status, amount: job.amount ?? null },
+      };
+    },
+  },
 ];
 
 /** Lines for the cross-app "what's on" view: reminders, dated tasks and invoices owing. */

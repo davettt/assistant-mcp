@@ -160,6 +160,156 @@ export const tools = [
       };
     },
   },
+  {
+    name: 'gift_keeper_update_gift',
+    description:
+      'Change a gift in Gift Keeper: its status (idea, shortlisted, ordered, bought, arrived, wrapped, given, cancelled), price, name or notes. Use a gift id from gift_keeper_upcoming.',
+    input: z.object({
+      giftId: z.string().min(1),
+      status: z
+        .enum([
+          'idea',
+          'shortlisted',
+          'ordered',
+          'bought',
+          'arrived',
+          'wrapped',
+          'given',
+          'cancelled',
+        ])
+        .optional(),
+      price: z.number().min(0).nullable().optional(),
+      name: z.string().trim().min(1).max(200).optional(),
+      notes: z.string().max(2000).optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const { giftId, ...changes } = input;
+      if (Object.keys(changes).length === 0) {
+        return {
+          app: app.name,
+          changed: false,
+          message: 'Nothing to change: give a status, price, name or notes.',
+        };
+      }
+      const gift = await apiCall(conn, 'PUT', `/api/gifts/${encodeURIComponent(giftId)}`, changes);
+      return {
+        app: app.name,
+        changed: true,
+        gift: { id: gift.id, name: gift.name, status: gift.status, price: gift.price ?? null },
+      };
+    },
+  },
+  {
+    name: 'gift_keeper_add_person',
+    description: 'Add a person to Gift Keeper, with optional relationship, interests and notes.',
+    input: z.object({
+      name: z.string().trim().min(1).max(100),
+      relationship: z.string().max(100).optional(),
+      interests: z.array(z.string().max(100)).max(50).optional(),
+      notes: z.string().max(2000).optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const { names } = await findPerson(conn, input.name);
+      if (names.some((n) => n.toLowerCase() === input.name.trim().toLowerCase())) {
+        return { app: app.name, added: false, message: `${input.name} is already in Gift Keeper.` };
+      }
+      const person = await apiCall(conn, 'POST', '/api/people', {
+        name: input.name,
+        ...(input.relationship ? { relationship: input.relationship } : {}),
+        ...(input.interests ? { interests: input.interests } : {}),
+        ...(input.notes ? { notes: input.notes } : {}),
+      });
+      return { app: app.name, added: true, person: summarisePerson(person) };
+    },
+  },
+  {
+    name: 'gift_keeper_add_occasion',
+    description:
+      'Add an occasion in Gift Keeper (a birthday, anniversary, holiday or custom date) for one or more people by name, yearly or one-off, with an optional budget. If a name does not match, the reply lists the people.',
+    input: z.object({
+      name: z.string().trim().min(1).max(200),
+      date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .describe('YYYY-MM-DD; for a yearly occasion, the next one'),
+      people: z.array(z.string().min(1).max(100)).min(1).max(20),
+      repeats: z.enum(['yearly', 'one-off']).default('yearly'),
+      type: z.string().max(50).optional().describe('e.g. birthday, anniversary, christmas, custom'),
+      budget: z.number().min(0).optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const people = await apiCall(conn, 'GET', '/api/people');
+      const ids = [];
+      const missing = [];
+      for (const wanted of input.people) {
+        const p = people.find((x) => x.name.toLowerCase() === wanted.trim().toLowerCase());
+        if (p) ids.push(p.id);
+        else missing.push(wanted);
+      }
+      if (missing.length) {
+        return {
+          app: app.name,
+          added: false,
+          message: `No one called ${missing.map((m) => `"${m}"`).join(', ')} in Gift Keeper.`,
+          people: people.map((p) => p.name),
+        };
+      }
+      const occasion = await apiCall(conn, 'POST', '/api/occasions', {
+        name: input.name,
+        date: input.date,
+        personIds: ids,
+        recurrence: input.repeats,
+        ...(input.type ? { type: input.type } : {}),
+        ...(input.budget !== undefined ? { budget: input.budget } : {}),
+      });
+      return {
+        app: app.name,
+        added: true,
+        occasion: {
+          id: occasion.id,
+          name: occasion.name,
+          date: occasion.date,
+          repeats: occasion.recurrence,
+          people: input.people,
+        },
+      };
+    },
+  },
+  {
+    name: 'gift_keeper_complete_occasion',
+    description:
+      'Mark an occasion in Gift Keeper as done for this year, so it leaves the upcoming list until next time. Use an occasion id from gift_keeper_upcoming. The app refuses while a gift for it is still open (not given or cancelled), so settle those first with gift_keeper_update_gift.',
+    input: z.object({ occasionId: z.string().min(1) }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const occasion = await apiCall(
+        conn,
+        'POST',
+        `/api/occasions/${encodeURIComponent(input.occasionId)}/complete`,
+        {},
+      );
+      return {
+        app: app.name,
+        changed: 'completed',
+        occasion: {
+          id: occasion.id,
+          name: occasion.name,
+          completedYears: occasion.completedYears ?? [],
+        },
+      };
+    },
+  },
 ];
 
 /** Lines for the cross-app "what's on" view. */

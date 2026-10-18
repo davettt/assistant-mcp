@@ -188,5 +188,63 @@ describe(
       assert.equal(out.changed, 'given');
       assert.equal(out.gift.status, 'given');
     });
+
+    it('adds a person and an occasion, updates a gift, completes the occasion', async () => {
+      const dup = parse(
+        await client.callTool({ name: 'gift_keeper_add_person', arguments: { name: 'bob' } }),
+      );
+      assert.equal(dup.added, false);
+      const alice = parse(
+        await client.callTool({
+          name: 'gift_keeper_add_person',
+          arguments: { name: 'Alice', relationship: 'Sister', interests: ['hiking'] },
+        }),
+      );
+      assert.equal(alice.added, true);
+      const miss = parse(
+        await client.callTool({
+          name: 'gift_keeper_add_occasion',
+          arguments: { name: 'Christmas', date: '2026-12-25', people: ['Alice', 'Zed'] },
+        }),
+      );
+      assert.equal(miss.added, false);
+      const occ = parse(
+        await client.callTool({
+          name: 'gift_keeper_add_occasion',
+          arguments: {
+            name: 'Christmas',
+            date: '2026-12-25',
+            people: ['Alice', 'Bob'],
+            budget: 100,
+            type: 'christmas',
+          },
+        }),
+      );
+      assert.equal(occ.added, true);
+      assert.equal(occ.occasion.repeats, 'yearly');
+      const up = parse(await client.callTool({ name: 'gift_keeper_upcoming', arguments: {} }));
+      const bobs = up.occasions.find((o) => o.name === "Bob's birthday");
+      const gift = bobs.gifts[0];
+      const upd = parse(
+        await client.callTool({
+          name: 'gift_keeper_update_gift',
+          arguments: { giftId: gift.id, status: 'given', price: 65 },
+        }),
+      );
+      assert.equal(upd.gift.status, 'given');
+      assert.equal(upd.gift.price, 65);
+      const done = parse(
+        await client.callTool({
+          name: 'gift_keeper_complete_occasion',
+          arguments: { occasionId: bobs.occasionId },
+        }),
+      );
+      assert.equal(done.changed, 'completed');
+      const after = parse(await client.callTool({ name: 'gift_keeper_upcoming', arguments: {} }));
+      assert.ok(
+        !after.occasions.some((o) => o.occasionId === bobs.occasionId),
+        'a completed occasion leaves upcoming',
+      );
+    });
   },
 );

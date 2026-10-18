@@ -96,6 +96,11 @@ describe(
       ]) {
         assert.ok(names.includes(n), n);
       }
+      // Only Due Again exists under this test's data root, so no other app's tools are offered.
+      assert.ok(
+        !names.some((n) => n.startsWith('gift_keeper_') || n.startsWith('client_manager_')),
+        'uninstalled apps offer no tools',
+      );
       const readOnly = tools.find((t) => t.name === 'due_again_items').annotations?.readOnlyHint;
       assert.equal(readOnly, true);
     });
@@ -119,7 +124,8 @@ describe(
       const cats = await (await fetch(`${base}/api/categories`)).json();
       const soon = new Date();
       soon.setDate(soon.getDate() + 3);
-      const nextDue = soon.toISOString().slice(0, 10);
+      // Local calendar day: the UTC day is behind local time for part of every day in Australia.
+      const nextDue = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, '0')}-${String(soon.getDate()).padStart(2, '0')}`;
       res = await fetch(`${base}/api/items`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -203,6 +209,36 @@ describe(
       );
       assert.equal(needsInterval.added, false);
       assert.match(needsInterval.message, /interval/);
+    });
+
+    it('moves an item, reschedules one occurrence and skips one', async () => {
+      const items = parse(await client.callTool({ name: 'due_again_items', arguments: {} }));
+      const id = items.items[0].id;
+      const moved = parse(
+        await client.callTool({
+          name: 'due_again_update_item',
+          arguments: { itemId: id, nextDue: '2027-06-01', notes: 'moved by the assistant' },
+        }),
+      );
+      assert.equal(moved.changed, true);
+      assert.equal(moved.item.nextDue, '2027-06-01');
+      const nothing = parse(
+        await client.callTool({ name: 'due_again_update_item', arguments: { itemId: id } }),
+      );
+      assert.equal(nothing.changed, false);
+      const re = parse(
+        await client.callTool({
+          name: 'due_again_reschedule',
+          arguments: { itemId: id, date: '2027-06-15' },
+        }),
+      );
+      assert.equal(re.changed, 'rescheduled');
+      assert.equal(re.item.nextDue, '2027-06-15');
+      const skipped = parse(
+        await client.callTool({ name: 'due_again_skip', arguments: { itemId: id } }),
+      );
+      assert.equal(skipped.changed, 'skipped');
+      assert.ok(skipped.item.nextDue > '2027-06-15', 'skip moves the next due on');
     });
 
     it('refuses a completion dated in the future with the app’s message', async () => {
