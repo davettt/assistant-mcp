@@ -83,17 +83,21 @@ describe(
       fs.rmSync(root, { recursive: true, force: true });
     });
 
-    it('lists the tools', async () => {
+    it('lists the Due Again tools and the shared ones', async () => {
       const { tools } = await client.listTools();
-      const names = tools.map((t) => t.name).sort();
-      assert.deepEqual(names, [
+      const names = tools.map((t) => t.name);
+      for (const n of [
+        'whats_on',
+        'open_app',
+        'due_again_items',
+        'due_again_history',
         'due_again_add_item',
         'due_again_complete',
-        'due_again_history',
-        'due_again_items',
-        'open_app',
-        'whats_on',
-      ]);
+      ]) {
+        assert.ok(names.includes(n), n);
+      }
+      const readOnly = tools.find((t) => t.name === 'due_again_items').annotations?.readOnlyHint;
+      assert.equal(readOnly, true);
     });
 
     it('reports Due Again as not enabled before the setting is on', async () => {
@@ -101,7 +105,7 @@ describe(
       assert.equal(out.available, false);
       assert.equal(out.reason, 'not-enabled');
       const on = parse(await client.callTool({ name: 'whats_on', arguments: { days: 30 } }));
-      assert.deepEqual(on.unavailable, [{ app: 'Due Again', reason: 'not-enabled' }]);
+      assert.ok(on.unavailable.some((u) => u.app === 'Due Again' && u.reason === 'not-enabled'));
     });
 
     it('reads items once assistant access is on', async () => {
@@ -139,7 +143,7 @@ describe(
       const on = parse(await client.callTool({ name: 'whats_on', arguments: { days: 7 } }));
       assert.equal(on.count, 1);
       assert.equal(on.items[0].app, 'Due Again');
-      assert.deepEqual(on.unavailable, []);
+      assert.ok(!on.unavailable.some((u) => u.app === 'Due Again'));
     });
 
     it('records a completion and the next due date moves on', async () => {

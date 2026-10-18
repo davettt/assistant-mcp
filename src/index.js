@@ -12,11 +12,12 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { ApiError } from './connection.js';
 import * as dueAgain from './apps/due-again.js';
+import * as giftKeeper from './apps/gift-keeper.js';
 
 const { version } = createRequire(import.meta.url)('../package.json');
 
 // One entry per app. Add an app by adding a module with the same shape.
-const APPS = [dueAgain];
+const APPS = [dueAgain, giftKeeper];
 
 function text(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
