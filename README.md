@@ -1,0 +1,63 @@
+# Tiong Creative assistant (MCP server)
+
+Lets an AI assistant on your Mac, such as Claude Desktop, use your Tiong Creative apps while
+they are open. Ask "what's due this month" and it reads Due Again; say "mark the car insurance
+done" and Due Again records it and works out the next date, the same as if you had clicked.
+
+It only works with the apps, and only while each app has **Settings → Assistant → Allow
+assistant access** turned on. With it off, or the app closed, the assistant is told so and
+nothing else happens.
+
+## Apps
+
+| App                      | Reads                                                  | Changes                                   |
+| ------------------------ | ------------------------------------------------------ | ----------------------------------------- |
+| Due Again 1.1.0 or later | items with status and next due date, an item's history | add an item, record that an item was done |
+
+More apps follow, and the assistant can also open an app for you, but only after you agree.
+
+## Setup
+
+You need Node.js 20 or later and Claude Desktop. Add this to Claude Desktop's config file
+(Settings → Developer → Edit Config), then restart Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "tiongcreative": {
+      "command": "npx",
+      "args": ["-y", "@tiongcreative/assistant-mcp"]
+    }
+  }
+}
+```
+
+In each app, turn on **Allow assistant access** in Settings → Assistant. Open the app, then ask
+Claude what's on.
+
+For Claude Code: `claude mcp add tiongcreative -- npx -y @tiongcreative/assistant-mcp`.
+
+## How it stays on your Mac
+
+- The server opens no network connection of its own. It talks to each app on 127.0.0.1 only.
+- While assistant access is on, the app writes a small file in its own data folder holding its
+  port and a token made fresh for that launch, readable only by your user account. The server
+  reads it and sends the token with each request. The file is removed when you turn the setting
+  off or quit the app, so there is nothing to copy or store.
+- What the assistant reads goes to whichever AI service it uses. Turn access on only for an
+  assistant you trust.
+- The package holds no secrets and never contacts tiongcreative.com.au.
+
+## Development
+
+```bash
+npm install
+npm test            # needs ../due-again checked out: runs its server on a temp data folder
+npm run validate
+```
+
+Registering a local checkout with Claude Code: `claude mcp add tiongcreative -- node /path/to/src/index.js`.
+
+## Licence
+
+Released under the MIT licence.
