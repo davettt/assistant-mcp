@@ -175,5 +175,112 @@ describe(
       assert.equal(miss.found, false);
       assert.deepEqual(miss.titles, ['Trip ideas']);
     });
+
+    it('adds and changes lists and notes, and lists options on a miss', async () => {
+      const added = parse(
+        await client.callTool({
+          name: 'lists_and_notes_add_items',
+          arguments: { list: 'camping trip', items: ['Stove'] },
+        }),
+      );
+      assert.equal(added.changed, true, JSON.stringify(added));
+      assert.equal(added.list.items, 3);
+
+      const changed = parse(
+        await client.callTool({
+          name: 'lists_and_notes_update_items',
+          arguments: {
+            list: 'Camping trip',
+            changes: [
+              { item: 'torch', done: true },
+              { item: 'Stove', text: 'Gas stove' },
+            ],
+          },
+        }),
+      );
+      assert.equal(changed.changed, true, JSON.stringify(changed));
+      assert.equal(changed.list.done, 2);
+      const one = parse(
+        await client.callTool({
+          name: 'lists_and_notes_lists',
+          arguments: { name: 'Camping trip' },
+        }),
+      );
+      assert.deepEqual(
+        one.list.items.map((i) => [i.text, i.done]),
+        [
+          ['Tent', true],
+          ['Torch', true],
+          ['Gas stove', false],
+        ],
+      );
+      assert.equal(one.list.items[0].id, 'i1', 'item ids are kept');
+
+      const missItem = parse(
+        await client.callTool({
+          name: 'lists_and_notes_update_items',
+          arguments: { list: 'Camping trip', changes: [{ item: 'Kayak', done: true }] },
+        }),
+      );
+      assert.equal(missItem.changed, false);
+      assert.ok(missItem.items.includes('Gas stove'));
+
+      const list = parse(
+        await client.callTool({
+          name: 'lists_and_notes_add_list',
+          arguments: { name: 'Groceries', items: ['Milk', 'Bread'] },
+        }),
+      );
+      assert.equal(list.added, true, JSON.stringify(list));
+      assert.equal(list.list.items, 2);
+      const dup = parse(
+        await client.callTool({
+          name: 'lists_and_notes_add_list',
+          arguments: { name: 'groceries' },
+        }),
+      );
+      assert.equal(dup.added, false);
+      const badCat = parse(
+        await client.callTool({
+          name: 'lists_and_notes_add_list',
+          arguments: { name: 'Shed', category: 'garage' },
+        }),
+      );
+      assert.equal(badCat.added, false);
+      assert.deepEqual(badCat.categories, ['personal', 'work']);
+
+      const note = parse(
+        await client.callTool({
+          name: 'lists_and_notes_add_note',
+          arguments: { title: 'Packing', content: '# Packing\n\nSunscreen' },
+        }),
+      );
+      assert.equal(note.added, true, JSON.stringify(note));
+      const appended = parse(
+        await client.callTool({
+          name: 'lists_and_notes_update_note',
+          arguments: { title: 'packing', append: 'Bring a hat' },
+        }),
+      );
+      assert.equal(appended.changed, true, JSON.stringify(appended));
+      const full = parse(
+        await client.callTool({ name: 'lists_and_notes_note', arguments: { title: 'Packing' } }),
+      );
+      assert.match(full.note.content, /Sunscreen\n\nBring a hat/);
+      const renamed = parse(
+        await client.callTool({
+          name: 'lists_and_notes_update_note',
+          arguments: { title: 'Packing', newTitle: 'Packing list' },
+        }),
+      );
+      assert.equal(renamed.note.title, 'Packing list');
+      const nothing = parse(
+        await client.callTool({
+          name: 'lists_and_notes_update_note',
+          arguments: { title: 'Packing list' },
+        }),
+      );
+      assert.equal(nothing.changed, false);
+    });
   },
 );

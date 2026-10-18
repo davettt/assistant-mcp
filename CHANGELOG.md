@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.0] - 2026-10-19
+
+### Added
+
+- Lists & Notes can now be changed, with Lists & Notes 1.23.0 or later: `lists_and_notes_add_items`, `lists_and_notes_update_items` (tick, untick, reword or annotate items named by their text), `lists_and_notes_add_list`, `lists_and_notes_add_note` and `lists_and_notes_update_note` (append, replace or rename). Changes to an existing list or note send the `modified` stamp last read; if the user changed it in the meantime the app refuses, and the tool re-reads and retries once. Item ids are always sent back. An older Lists & Notes gets a message saying which version writes need. No delete tool. End-to-end test against the real 1.23.0 server.
+
 ## [0.2.0] - 2026-10-19
 
 ### Added

@@ -10,12 +10,12 @@ nothing else happens.
 
 ## Apps
 
-| App                           | Reads                                                                                                            | Changes                                                                                    |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Due Again 1.1.0 or later      | items with status and next due date, an item's history                                                           | add an item, record that an item was done                                                  |
-| Gift Keeper 1.3.0 or later    | people with interests, sizes and preferences; upcoming occasions with budget, spend and whether a gift is chosen | add a gift idea for a person, mark a gift as given                                         |
-| Client Manager 1.6.0 or later | pending reminders, open tasks, invoices owing with totals and balance, one client with their jobs                | add a client, a job, a reminder or a task, change a job, task or reminder, log an activity |
-| Lists & Notes 1.22.0 or later | lists with their items, notes with previews, the full text of a note                                             | nothing yet                                                                                |
+| App                                                 | Reads                                                                                                            | Changes                                                                                    |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Due Again 1.1.0 or later                            | items with status and next due date, an item's history                                                           | add an item, record that an item was done                                                  |
+| Gift Keeper 1.3.0 or later                          | people with interests, sizes and preferences; upcoming occasions with budget, spend and whether a gift is chosen | add a gift idea for a person, mark a gift as given                                         |
+| Client Manager 1.6.0 or later                       | pending reminders, open tasks, invoices owing with totals and balance, one client with their jobs                | add a client, a job, a reminder or a task, change a job, task or reminder, log an activity |
+| Lists & Notes 1.22.0 or later (changes need 1.23.0) | lists with their items, notes with previews, the full text of a note                                             | add a list or a note, add items, tick off or reword items, add to or rename a note         |
 
 More apps follow, and the assistant can also open an app for you, but only after you agree.
 
