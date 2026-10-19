@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.0] - 2026-10-19
+
+### Added
+
+- One-command setup, status and removal for ChatGPT desktop on the same Mac. ChatGPT runs the existing local assistant server; app access still depends on each app's assistant setting.
+
 ## [0.3.0] - 2026-10-19
 
 ### Added

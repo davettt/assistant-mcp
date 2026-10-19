@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { chatGptStatus, installChatGpt, uninstallChatGpt } from './chatgpt-install.js';
 
 export const SERVER_KEY = 'tiongcreative';
 const PACKAGE = '@tiongcreative/assistant-mcp';
@@ -109,8 +110,45 @@ const NEXT_STEPS = [
 
 /** Runs the command and returns the process exit code. Prints with the given writer. */
 export function runCli(args, print = console.log) {
-  const [command] = args;
+  const [command, client] = args;
   try {
+    if (client === 'chatgpt' && ['install', 'uninstall', 'status'].includes(command)) {
+      if (command === 'install') {
+        const result = installChatGpt({ allowFresh: args.includes('--allow-fresh') });
+        print(
+          result.already
+            ? 'The Tiong Creative assistant is already set up in ChatGPT.'
+            : 'Added the Tiong Creative assistant to ChatGPT.',
+        );
+        print(
+          '\nNext:\n1. Restart the ChatGPT desktop app.\n2. Open each Tiong Creative app and turn on "Allow assistant access" in Settings.\n3. Type /mcp in ChatGPT to check the connection.',
+        );
+      } else if (command === 'uninstall') {
+        const result = uninstallChatGpt();
+        print(
+          result.removed
+            ? 'Removed the Tiong Creative assistant from ChatGPT. Restart ChatGPT to finish.'
+            : 'The Tiong Creative assistant was not set up in ChatGPT.',
+        );
+      } else {
+        const result = chatGptStatus();
+        print(
+          result.managed
+            ? 'Set up in ChatGPT.'
+            : result.installed
+              ? 'ChatGPT has a different MCP server named "tiongcreative".'
+              : 'Not set up in ChatGPT.',
+        );
+      }
+      return 0;
+    }
+    if (
+      client &&
+      client !== '--allow-fresh' &&
+      ['install', 'uninstall', 'status'].includes(command)
+    ) {
+      throw new Error('Choose "chatgpt" as the client, or omit it for Claude Desktop.');
+    }
     if (command === 'install') {
       const env = {};
       // Developer convenience: `install --allow-fresh` passes npm's release-age override
@@ -146,7 +184,7 @@ export function runCli(args, print = console.log) {
       return 0;
     }
     print(
-      `Usage:\n  npx ${PACKAGE} install     add the assistant to Claude Desktop\n  npx ${PACKAGE} uninstall   remove it\n  npx ${PACKAGE} status      say whether it is set up\n\nWith no command, this runs the MCP server itself (Claude Desktop does that for you).`,
+      `Usage:\n  npx ${PACKAGE} install              add the assistant to Claude Desktop\n  npx ${PACKAGE} install chatgpt      add it to ChatGPT desktop\n  npx ${PACKAGE} uninstall [chatgpt] remove it from the chosen client\n  npx ${PACKAGE} status [chatgpt]    check the chosen client\n\nWith no command, this runs the MCP server itself.`,
     );
     return command === 'help' || command === '--help' ? 0 : 2;
   } catch (err) {

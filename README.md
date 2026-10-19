@@ -40,6 +40,20 @@ Desktop starts it, so after installing another app restart Claude Desktop once.
 
 To remove it: `npx @tiongcreative/assistant-mcp uninstall`. To check: `npx @tiongcreative/assistant-mcp status`.
 
+### ChatGPT desktop on the same Mac
+
+For ChatGPT desktop, run this one command instead:
+
+```
+npx @tiongcreative/assistant-mcp install chatgpt
+```
+
+It registers the same local server in ChatGPT's MCP settings. Restart ChatGPT, turn on
+**Allow assistant access** in each app, and type `/mcp` in ChatGPT to check the connection.
+The Tiong Creative apps must be open on this Mac. This setup is for ChatGPT desktop, not
+ChatGPT in a web browser. To check or remove it, run `npx @tiongcreative/assistant-mcp status chatgpt`
+or `npx @tiongcreative/assistant-mcp uninstall chatgpt`.
+
 For Claude Code: `claude mcp add tiongcreative -- npx -y @tiongcreative/assistant-mcp`.
 
 ## How it stays on your Mac
