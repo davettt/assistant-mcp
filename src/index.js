@@ -16,6 +16,7 @@ import * as dueAgain from './apps/due-again.js';
 import * as giftKeeper from './apps/gift-keeper.js';
 import * as clientManager from './apps/client-manager.js';
 import * as listsAndNotes from './apps/lists-and-notes.js';
+import * as budgetPlanner from './apps/budget-planner.js';
 
 const { version } = createRequire(import.meta.url)('../package.json');
 
@@ -26,7 +27,7 @@ if (process.argv.length > 2) {
 }
 
 // One entry per app. Add an app by adding a module with the same shape.
-const ALL_APPS = [dueAgain, giftKeeper, clientManager, listsAndNotes];
+const ALL_APPS = [dueAgain, giftKeeper, clientManager, listsAndNotes, budgetPlanner];
 // Only apps present on this Mac get tools, so the assistant never points the user at an
 // app they do not have. Checked once at start-up: install an app, restart the assistant.
 const APPS = ALL_APPS.filter((a) => isInstalled(a.app));

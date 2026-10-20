@@ -2,7 +2,8 @@
 // which gives the assistant its own per-list and per-note routes (the whole-file save is
 // window-only). Changing an existing list or note sends the `modified` stamp last read
 // (`baseModified`); if the user changed it since, the app refuses and the tool re-reads and
-// retries once. Item ids are always sent back, or the app would treat items as new. There
+// retries once. Item ids are always sent back, or the app would treat items as new. Adding
+// and renaming categories needs 1.24.0, which lets the token use those two routes. There
 // is no delete tool. Talks to the app's local API with the per-launch token it writes while
 // "Allow assistant access" is on (list-manager/assistant-access.js).
 import { z } from 'zod';
@@ -51,6 +52,7 @@ function matches(text, q) {
 }
 
 const WRITES_FROM = '1.23.0';
+const CATEGORY_WRITES_FROM = '1.24.0';
 
 function olderThan(version, min) {
   const a = String(version ?? '0')
@@ -64,13 +66,18 @@ function olderThan(version, min) {
 }
 
 /** The app's version must support writes; returns a result to send back, or null. */
-function needsUpdate(conn) {
-  if (!olderThan(conn.version, WRITES_FROM)) return null;
+function needsUpdate(conn, min = WRITES_FROM, what = 'Changing lists and notes') {
+  if (!olderThan(conn.version, min)) return null;
   return {
     app: app.name,
     changed: false,
-    message: `Changing lists and notes needs Lists & Notes ${WRITES_FROM} or later (this Mac has ${conn.version ?? 'an older version'}). Reading still works.`,
+    message: `${what} needs Lists & Notes ${min} or later (this Mac has ${conn.version ?? 'an older version'}). Reading still works.`,
   };
+}
+
+function findCategory(categories, name) {
+  const wanted = name.trim().toLowerCase();
+  return categories.find((c) => c.toLowerCase() === wanted);
 }
 
 async function findList(conn, name) {
@@ -454,6 +461,162 @@ export const tools = [
           `/api/data/notes/${encodeURIComponent(id)}`,
           body,
         );
+        return { app: app.name, changed: true, note: summariseNote(updated) };
+      });
+    },
+  },
+  {
+    name: 'lists_and_notes_categories',
+    description:
+      'The categories in Lists & Notes with how many lists and notes are in each. A category written "parent/child" is a subcategory.',
+    input: z.object({}),
+    async run() {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const [categories, lists, notes] = await Promise.all([
+        apiCall(conn, 'GET', '/api/data/categories'),
+        apiCall(conn, 'GET', '/api/data/lists'),
+        apiCall(conn, 'GET', '/api/data/notes'),
+      ]);
+      const count = (records, c) => records.filter((r) => r.category === c).length;
+      return {
+        app: app.name,
+        count: categories.length,
+        categories: categories.map((name) => ({
+          name,
+          lists: count(lists, name),
+          notes: count(notes, name),
+        })),
+      };
+    },
+  },
+  {
+    name: 'lists_and_notes_add_category',
+    description:
+      'Add a category in Lists & Notes. Names are stored in lower case, up to 50 characters. Write "parent/child" for a subcategory (one level only); a missing parent is created too.',
+    input: z.object({ name: z.string().trim().min(1).max(50) }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const old = needsUpdate(conn, CATEGORY_WRITES_FROM, 'Adding categories');
+      if (old) return old;
+      const categories = await apiCall(conn, 'GET', '/api/data/categories');
+      const existing = findCategory(categories, input.name);
+      if (existing)
+        return {
+          app: app.name,
+          added: false,
+          message: `There is already a category called "${existing}".`,
+        };
+      const res = await apiCall(conn, 'POST', '/api/data/categories', { name: input.name });
+      return { app: app.name, added: true, category: res.category, categories: res.categories };
+    },
+  },
+  {
+    name: 'lists_and_notes_rename_category',
+    description:
+      'Rename a category in Lists & Notes. Every list and note in it moves to the new name, and so do its subcategories. If the category does not exist, the reply lists the categories.',
+    input: z.object({
+      category: z.string().min(1).max(50).describe('The category as it is named now'),
+      newName: z.string().trim().min(1).max(50),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const old = needsUpdate(conn, CATEGORY_WRITES_FROM, 'Renaming categories');
+      if (old) return old;
+      const categories = await apiCall(conn, 'GET', '/api/data/categories');
+      const category = findCategory(categories, input.category);
+      if (!category)
+        return {
+          app: app.name,
+          changed: false,
+          message: `No category called "${input.category}".`,
+          categories,
+        };
+      const res = await apiCall(
+        conn,
+        'PUT',
+        `/api/data/categories/${encodeURIComponent(category)}`,
+        { newName: input.newName },
+      );
+      return {
+        app: app.name,
+        changed: true,
+        from: res.oldName,
+        to: res.newName,
+        categories: res.categories,
+      };
+    },
+  },
+  {
+    name: 'lists_and_notes_move',
+    description:
+      'Move a list or a note to another category in Lists & Notes. Name the list or the note title, and a category that already exists; if it does not, the reply lists the categories.',
+    input: z.object({
+      list: z.string().min(1).max(75).optional(),
+      note: z.string().min(1).max(75).optional().describe('A note title'),
+      category: z.string().min(1).max(50),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const old = needsUpdate(conn);
+      if (old) return old;
+      if ((input.list === undefined) === (input.note === undefined)) {
+        return { app: app.name, changed: false, message: 'Give either a list or a note.' };
+      }
+      const categories = await apiCall(conn, 'GET', '/api/data/categories');
+      const category = findCategory(categories, input.category);
+      if (!category)
+        return {
+          app: app.name,
+          changed: false,
+          message: `No category called "${input.category}".`,
+          categories,
+        };
+      if (input.list !== undefined) {
+        const first = await findList(conn, input.list);
+        if (!first.list)
+          return {
+            app: app.name,
+            changed: false,
+            message: `No list called "${input.list}".`,
+            lists: first.names,
+          };
+        const id = first.list.id;
+        const load = async () =>
+          (await apiCall(conn, 'GET', '/api/data/lists')).find((l) => l.id === id);
+        return withRetry(load, async (list) => {
+          if (!list)
+            return { app: app.name, changed: false, message: 'That list has just been removed.' };
+          const updated = await apiCall(
+            conn,
+            'PATCH',
+            `/api/data/lists/${encodeURIComponent(id)}`,
+            { category, baseModified: list.metadata?.modified },
+          );
+          return { app: app.name, changed: true, list: summariseList(updated) };
+        });
+      }
+      const first = await findNote(conn, input.note);
+      if (!first.note)
+        return {
+          app: app.name,
+          changed: false,
+          message: `No note called "${input.note}".`,
+          titles: first.titles,
+        };
+      const id = first.note.id;
+      const load = () => apiCall(conn, 'GET', `/api/data/notes/${encodeURIComponent(id)}`);
+      return withRetry(load, async (note) => {
+        const updated = await apiCall(conn, 'PUT', `/api/data/notes/${encodeURIComponent(id)}`, {
+          category,
+          baseModified: note.metadata?.modified,
+        });
         return { app: app.name, changed: true, note: summariseNote(updated) };
       });
     },

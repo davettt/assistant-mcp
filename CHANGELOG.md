@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.0] - 2026-10-20
+
+### Added
+
+- Lists & Notes category tools: `lists_and_notes_categories` (each category with how many lists and notes are in it), `lists_and_notes_add_category` (subcategories as "parent/child", missing parent created), `lists_and_notes_rename_category` (lists, notes and subcategories follow the rename), and `lists_and_notes_move` (move one list or note to an existing category, with the same baseModified re-read-and-retry as the other change tools). Adding and renaming categories need Lists & Notes 1.24.0 and reply with an update message on older versions; moving works from 1.23.0. There is still no delete tool.
+- End-to-end test covering the four category and move tools against the list-manager server.
+- Budget Planner (needs Budget Planner 2.2.0, which adds assistant access): `budget_planner_budget` (income, expenses, surplus and per-category and per-expense amounts for a week, fortnight, month or financial year, past or future), `budget_planner_upcoming` (expense payments due in the next N days; also feeds `whats_on`), `budget_planner_expenses` (the recurring items with current amount and coming amount changes), `budget_planner_accounts` (open accounts and net worth), `budget_planner_scenarios` (list, or one or several scenarios' results for review and comparison: loan repayment, interest, LVR, surplus before and after, cash check, when affordable, net worth change). Writes: `budget_planner_add_expense`, `budget_planner_update_expense` (a new amount starts on a date, so earlier months keep the old one; rename, recategorise, set an end date) and `budget_planner_update_scenario` (loan rate, price, deposit, term, repayment frequency, target date, keep-aside, name; replies with the new results). All figures come from the app's `/api/figures` routes, which run the app's own maths. No delete tools.
+- End-to-end test against the budget-planner server.
+
 ## [0.4.0] - 2026-10-19
 
 ### Added

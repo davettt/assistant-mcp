@@ -282,5 +282,72 @@ describe(
       );
       assert.equal(nothing.changed, false);
     });
+
+    it('adds, renames and lists categories, and moves lists and notes between them', async () => {
+      const added = parse(
+        await client.callTool({
+          name: 'lists_and_notes_add_category',
+          arguments: { name: 'Holidays/Beaches' },
+        }),
+      );
+      assert.equal(added.added, true, JSON.stringify(added));
+      assert.equal(added.category, 'holidays/beaches');
+      assert.ok(added.categories.includes('holidays'), 'the parent is created');
+      const dup = parse(
+        await client.callTool({
+          name: 'lists_and_notes_add_category',
+          arguments: { name: 'WORK' },
+        }),
+      );
+      assert.equal(dup.added, false);
+
+      const movedList = parse(
+        await client.callTool({
+          name: 'lists_and_notes_move',
+          arguments: { list: 'camping trip', category: 'holidays/beaches' },
+        }),
+      );
+      assert.equal(movedList.changed, true, JSON.stringify(movedList));
+      assert.equal(movedList.list.category, 'holidays/beaches');
+      const movedNote = parse(
+        await client.callTool({
+          name: 'lists_and_notes_move',
+          arguments: { note: 'Trip ideas', category: 'Holidays' },
+        }),
+      );
+      assert.equal(movedNote.changed, true, JSON.stringify(movedNote));
+      assert.equal(movedNote.note.category, 'holidays');
+      const badMove = parse(
+        await client.callTool({
+          name: 'lists_and_notes_move',
+          arguments: { note: 'Trip ideas', category: 'garage' },
+        }),
+      );
+      assert.equal(badMove.changed, false);
+      assert.ok(badMove.categories.includes('work'));
+
+      const renamed = parse(
+        await client.callTool({
+          name: 'lists_and_notes_rename_category',
+          arguments: { category: 'holidays', newName: 'Travel' },
+        }),
+      );
+      assert.equal(renamed.changed, true, JSON.stringify(renamed));
+      assert.ok(renamed.categories.includes('travel/beaches'), 'subcategories follow');
+      const missing = parse(
+        await client.callTool({
+          name: 'lists_and_notes_rename_category',
+          arguments: { category: 'holidays', newName: 'x' },
+        }),
+      );
+      assert.equal(missing.changed, false);
+
+      const cats = parse(
+        await client.callTool({ name: 'lists_and_notes_categories', arguments: {} }),
+      );
+      const byName = Object.fromEntries(cats.categories.map((c) => [c.name, c]));
+      assert.equal(byName['travel/beaches'].lists, 1, 'the list followed the rename');
+      assert.equal(byName.travel.notes, 1, 'the note followed the rename');
+    });
   },
 );
