@@ -1,7 +1,7 @@
 # Tiong Creative assistant (MCP server)
 
 Lets an AI assistant on your Mac, such as Claude Desktop, use your Tiong Creative apps while
-they are open. Ask "what's on this month" and it reads Due Again, Gift Keeper, Client Manager, Lists & Notes and Budget Planner; say "mark the car insurance
+they are open. Ask "what's on this month" and it reads Due Again, Gift Keeper, Client Manager, Lists & Notes, Budget Planner and DiagramSnap; say "mark the car insurance
 done" and Due Again records it and works out the next date, the same as if you had clicked.
 
 It only works with the apps, and only while each app has **Settings → Assistant → Allow
@@ -10,14 +10,14 @@ nothing else happens.
 
 ## Apps
 
-| App                                                                                             | Reads                                                                                                            | Changes                                                                                                                                         |
-| ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Due Again 1.1.0 or later                                                                        | items with status and next due date, an item's history                                                           | add an item, record that an item was done                                                                                                       |
-| Gift Keeper 1.3.0 or later                                                                      | people with interests, sizes and preferences; upcoming occasions with budget, spend and whether a gift is chosen | add a gift idea for a person, mark a gift as given                                                                                              |
-| Client Manager 1.6.0 or later                                                                   | pending reminders, open tasks, invoices owing with totals and balance, one client with their jobs                | add a client, a job, a reminder or a task, change a job, task or reminder, log an activity                                                      |
-| Lists & Notes 1.22.0 or later (changes need 1.23.0; adding and renaming categories need 1.24.0) | lists with their items, notes with previews, the full text of a note, categories with their list and note counts | add a list or a note, add items, tick off or reword items, add to or rename a note, move a list or note to a category, add or rename a category |
-
-| Budget Planner 2.2.0 or later | the budget for any week, fortnight, month or year, payments coming up, expenses, accounts and net worth, scenario results and comparisons | add an expense, change an expense's amount from a date, rename it or set when it stops, change a scenario's loan, dates or keep-aside |
+| App                                                                                             | Reads                                                                                                                                     | Changes                                                                                                                                         |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Due Again 1.1.0 or later                                                                        | items with status and next due date, an item's history                                                                                    | add an item, record that an item was done                                                                                                       |
+| Gift Keeper 1.3.0 or later                                                                      | people with interests, sizes and preferences; upcoming occasions with budget, spend and whether a gift is chosen                          | add a gift idea for a person, mark a gift as given                                                                                              |
+| Client Manager 1.6.0 or later                                                                   | pending reminders, open tasks, invoices owing with totals and balance, one client with their jobs                                         | add a client, a job, a reminder or a task, change a job, task or reminder, log an activity                                                      |
+| Lists & Notes 1.22.0 or later (changes need 1.23.0; adding and renaming categories need 1.24.0) | lists with their items, notes with previews, the full text of a note, categories with their list and note counts                          | add a list or a note, add items, tick off or reword items, add to or rename a note, move a list or note to a category, add or rename a category |
+| Budget Planner 2.2.0 or later                                                                   | the budget for any week, fortnight, month or year, payments coming up, expenses, accounts and net worth, scenario results and comparisons | add an expense, change an expense's amount from a date, rename it or set when it stops, change a scenario's loan, dates or keep-aside           |
+| DiagramSnap 0.7.0 or later                                                                      | diagrams and slide decks, shown as pictures in the chat                                                                                   | create a diagram or a deck, add a slide, change a diagram or slide's name, title, notes or drawing. Nothing is deleted                          |
 
 More apps follow, and the assistant can also open an app for you, but only after you agree.
 

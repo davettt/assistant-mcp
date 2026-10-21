@@ -10,13 +10,14 @@ import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ApiError, isInstalled } from './connection.js';
+import { ApiError, IMAGES, isInstalled } from './connection.js';
 import { runCli } from './install.js';
 import * as dueAgain from './apps/due-again.js';
 import * as giftKeeper from './apps/gift-keeper.js';
 import * as clientManager from './apps/client-manager.js';
 import * as listsAndNotes from './apps/lists-and-notes.js';
 import * as budgetPlanner from './apps/budget-planner.js';
+import * as diagramSnap from './apps/diagramsnap.js';
 
 const { version } = createRequire(import.meta.url)('../package.json');
 
@@ -27,14 +28,22 @@ if (process.argv.length > 2) {
 }
 
 // One entry per app. Add an app by adding a module with the same shape.
-const ALL_APPS = [dueAgain, giftKeeper, clientManager, listsAndNotes, budgetPlanner];
+const ALL_APPS = [dueAgain, giftKeeper, clientManager, listsAndNotes, budgetPlanner, diagramSnap];
 // Only apps present on this Mac get tools, so the assistant never points the user at an
 // app they do not have. Checked once at start-up: install an app, restart the assistant.
 const APPS = ALL_APPS.filter((a) => isInstalled(a.app));
 const MISSING = ALL_APPS.filter((a) => !isInstalled(a.app)).map((a) => a.app.name);
 
+// A tool's reply as JSON text, followed by any images it attached (withImages), which the
+// chat shows as pictures.
 function text(value) {
-  return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
+  const images = (value && value[IMAGES]) || [];
+  return {
+    content: [
+      { type: 'text', text: JSON.stringify(value, null, 2) },
+      ...images.map((i) => ({ type: 'image', data: i.data, mimeType: i.mimeType })),
+    ],
+  };
 }
 
 function failure(err) {

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0] - 2026-10-21
+
+### Added
+
+- DiagramSnap (needs DiagramSnap 0.7.0, which adds assistant access). Reads: `diagramsnap_list` (diagrams and decks, newest first, with shape and slide counts), `diagramsnap_diagram` (one diagram's diagramData and updatedAt, and a picture of it in the chat), `diagramsnap_deck` (a deck's slides with titles and notes, or one slide's diagramData and picture; pictures of the first 10 slides on request). Writes: `diagramsnap_create_diagram`, `diagramsnap_update_diagram` (rename, or replace the whole diagramData), `diagramsnap_create_deck`, `diagramsnap_add_slide` and `diagramsnap_update_slide` (title, notes or drawing). The assistant sends the app's diagramData description and DiagramSnap lays it out and draws it; the pictures are the PNG previews the app's window draws, returned as MCP image content, and a write waits up to 15 seconds for the new picture. A drawing change must send the updatedAt it read (baseModified) and is never retried after a clash, since it was built on the old version; renames, titles, notes and added slides re-read and retry once. An edit that would remove things drawn by hand on the canvas is refused until the user agrees (discardDrawn). No delete tools, and the app's own AI is never used.
+- Tools can attach images to their reply (`withImages` in `src/connection.js`); `ApiError` keeps the app's whole error reply as `body`.
+- End-to-end test against the flowsketch (DiagramSnap) server, standing in for the window's preview drawing.
+
 ## [0.5.0] - 2026-10-20
 
 ### Added

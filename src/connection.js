@@ -78,10 +78,12 @@ export async function appConnection(app) {
 }
 
 export class ApiError extends Error {
-  constructor(message, status, problems = []) {
+  constructor(message, status, problems = [], body = null) {
     super(message);
     this.status = status;
     this.problems = problems;
+    // The app's whole error reply, for the fields a tool acts on (such as a 409's updatedAt).
+    this.body = body;
   }
 }
 
@@ -98,7 +100,12 @@ export async function apiCall(conn, method, urlPath, body) {
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
-    throw new ApiError(data?.error ?? `Request failed (${res.status})`, res.status, data?.problems);
+    throw new ApiError(
+      data?.error ?? `Request failed (${res.status})`,
+      res.status,
+      data?.problems,
+      data,
+    );
   }
   return data;
 }
@@ -112,4 +119,14 @@ export function notAvailable(app, conn) {
     unreadable: `${app.name}'s assistant file could not be read: ${conn.detail ?? 'unknown error'}.`,
   };
   return { app: app.name, available: false, reason: conn.reason, message: reasons[conn.reason] };
+}
+
+// Images a tool attaches to its reply. A symbol key, so JSON.stringify leaves them out of
+// the text and src/index.js sends them as image content instead.
+export const IMAGES = Symbol('images');
+
+/** Attaches images ({ data: base64, mimeType }) to a tool's reply. */
+export function withImages(value, images) {
+  if (images.length) value[IMAGES] = images;
+  return value;
 }
