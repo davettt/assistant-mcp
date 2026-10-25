@@ -1,7 +1,8 @@
 // `npx @tiongcreative/assistant-mcp install`: sets the assistant up in Claude Desktop so a
 // member never edits JSON by hand. It adds one entry to Claude Desktop's config file (and
-// nothing else), keeps a backup, and records the full path to npx, because a desktop app
-// does not see the shell's PATH and would otherwise fail to find it.
+// nothing else), keeps a backup, and records a full path to npx, because a desktop app
+// does not see the shell's PATH and would otherwise fail to find it. Under a Node version
+// manager that path must not name a version, or the next Node upgrade breaks it (launcher).
 //
 // `uninstall` removes the entry. `status` says whether it is set up.
 import fs from 'node:fs';
@@ -27,11 +28,41 @@ export function configPath() {
   );
 }
 
-/** The npx beside the node that is running this command: the one Claude Desktop will use. */
-export function npxPath() {
-  const candidate = path.join(path.dirname(process.execPath), 'npx');
-  if (fs.existsSync(candidate)) return candidate;
-  throw new Error(`Could not find npx next to node at ${process.execPath}.`);
+/**
+ * How a desktop app should start the server: { command, args, env }. A Node version
+ * manager keeps each version in its own folder and removes it on upgrade, so a path into
+ * one stops working; use the manager's stable entry point instead. Otherwise, the npx
+ * beside the node running this command.
+ */
+export function launcher(execPath = process.execPath, home = os.homedir()) {
+  const npxArgs = ['-y', PACKAGE];
+  // nvm: nvm-exec loads nvm and runs the command with the "default" alias's Node.
+  const nvmExec = path.join(home, '.nvm', 'nvm-exec');
+  if (
+    execPath.startsWith(path.join(home, '.nvm', 'versions') + path.sep) &&
+    fs.existsSync(nvmExec)
+  ) {
+    return { command: nvmExec, args: ['npx', ...npxArgs], env: { NODE_VERSION: 'default' } };
+  }
+  // Volta: its shims in ~/.volta/bin pick the Node it has chosen.
+  const voltaNpx = path.join(home, '.volta', 'bin', 'npx');
+  if (execPath.startsWith(path.join(home, '.volta') + path.sep) && fs.existsSync(voltaNpx)) {
+    return { command: voltaNpx, args: npxArgs, env: {} };
+  }
+  const candidate = path.join(path.dirname(execPath), 'npx');
+  if (fs.existsSync(candidate)) return { command: candidate, args: npxArgs, env: {} };
+  throw new Error(`Could not find npx next to node at ${execPath}.`);
+}
+
+/** An entry this package wrote, from any version of it, whatever path it recorded. */
+export function isOurEntry(args) {
+  const tail = JSON.stringify(['-y', PACKAGE]);
+  return Array.isArray(args) && JSON.stringify(args.slice(-2)) === tail && args.length <= 3;
+}
+
+/** The entry points at a program that is no longer there (e.g. a Node removed on upgrade). */
+export function commandMissing(command) {
+  return typeof command === 'string' && path.isAbsolute(command) && !fs.existsSync(command);
 }
 
 function readConfig(file) {
@@ -67,8 +98,10 @@ function writeConfig(file, config, existed) {
 export function install({ env } = {}) {
   const file = configPath();
   const { config, existed } = readConfig(file);
-  const entry = { command: npxPath(), args: ['-y', PACKAGE] };
-  if (env && Object.keys(env).length) entry.env = env;
+  const run = launcher();
+  const entry = { command: run.command, args: run.args };
+  const allEnv = { ...run.env, ...env };
+  if (Object.keys(allEnv).length) entry.env = allEnv;
   const servers =
     config.mcpServers && typeof config.mcpServers === 'object' ? config.mcpServers : {};
   const already = JSON.stringify(servers[SERVER_KEY]) === JSON.stringify(entry);
@@ -95,7 +128,12 @@ export function status() {
   try {
     const { config, existed } = readConfig(file);
     const entry = existed ? config.mcpServers?.[SERVER_KEY] : undefined;
-    return { file, installed: !!entry, entry: entry ?? null };
+    return {
+      file,
+      installed: !!entry,
+      broken: !!entry && commandMissing(entry.command),
+      entry: entry ?? null,
+    };
   } catch (err) {
     return { file, installed: false, error: err.message };
   }
@@ -118,7 +156,9 @@ export function runCli(args, print = console.log) {
         print(
           result.already
             ? 'The Tiong Creative assistant is already set up in ChatGPT.'
-            : 'Added the Tiong Creative assistant to ChatGPT.',
+            : result.replaced
+              ? 'Updated the Tiong Creative assistant in ChatGPT.'
+              : 'Added the Tiong Creative assistant to ChatGPT.',
         );
         print(
           '\nNext:\n1. Restart the ChatGPT desktop app.\n2. Open each Tiong Creative app and turn on "Allow assistant access" in Settings.\n3. Type /mcp in ChatGPT to check the connection.',
@@ -133,11 +173,13 @@ export function runCli(args, print = console.log) {
       } else {
         const result = chatGptStatus();
         print(
-          result.managed
-            ? 'Set up in ChatGPT.'
-            : result.installed
-              ? 'ChatGPT has a different MCP server named "tiongcreative".'
-              : 'Not set up in ChatGPT.',
+          result.broken
+            ? `Set up in ChatGPT, but it starts the assistant with ${result.command}, which is no longer on this Mac (Node was probably upgraded). Run install chatgpt again.`
+            : result.managed
+              ? 'Set up in ChatGPT.'
+              : result.installed
+                ? 'ChatGPT has a different MCP server named "tiongcreative".'
+                : 'Not set up in ChatGPT.',
         );
       }
       return 0;
@@ -177,9 +219,11 @@ export function runCli(args, print = console.log) {
       if (r.error) print(r.error);
       else
         print(
-          r.installed
-            ? `Set up in Claude Desktop: ${r.file}`
-            : `Not set up in Claude Desktop (${r.file}).`,
+          r.broken
+            ? `Set up in Claude Desktop, but it starts the assistant with ${r.entry.command}, which is no longer on this Mac (Node was probably upgraded). Run install again.`
+            : r.installed
+              ? `Set up in Claude Desktop: ${r.file}`
+              : `Not set up in Claude Desktop (${r.file}).`,
         );
       return 0;
     }

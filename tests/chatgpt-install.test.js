@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { chatGptStatus, installChatGpt, uninstallChatGpt } from '../src/chatgpt-install.js';
-import { npxPath } from '../src/install.js';
+import { launcher } from '../src/install.js';
 
 describe('ChatGPT desktop install command', () => {
   let dir, cli, state;
@@ -51,17 +51,23 @@ else if (args[1] === 'add') {
 
   it('registers the local stdio command and leaves other servers alone', () => {
     fs.writeFileSync(state, JSON.stringify([{ name: 'other', transport: { type: 'stdio' } }]));
-    assert.deepEqual(installChatGpt({ cli }), { already: false });
+    assert.deepEqual(installChatGpt({ cli }), { already: false, replaced: false });
     const servers = JSON.parse(fs.readFileSync(state, 'utf8'));
     assert.equal(servers[0].name, 'other');
+    const start = launcher();
     assert.deepEqual(servers[1].transport, {
       type: 'stdio',
-      command: npxPath(),
-      args: ['-y', '@tiongcreative/assistant-mcp'],
-      env: {},
+      command: start.command,
+      args: start.args,
+      env: start.env,
     });
-    assert.deepEqual(installChatGpt({ cli }), { already: true });
-    assert.deepEqual(chatGptStatus(cli), { installed: true, managed: true });
+    assert.deepEqual(installChatGpt({ cli }), { already: true, replaced: false });
+    assert.deepEqual(chatGptStatus(cli), {
+      installed: true,
+      managed: true,
+      broken: false,
+      command: start.command,
+    });
     assert.deepEqual(uninstallChatGpt(cli), { removed: true });
     assert.deepEqual(JSON.parse(fs.readFileSync(state, 'utf8')), [servers[0]]);
   });
@@ -80,5 +86,24 @@ else if (args[1] === 'add') {
     );
     assert.throws(() => installChatGpt({ cli }), /already exists/);
     assert.throws(() => uninstallChatGpt(cli), /does not match/);
+  });
+
+  it('repairs its own entry after a Node upgrade removed the npx it pointed at', () => {
+    const gone = '/Users/someone/.nvm/versions/node/v24.20.0/bin/npx';
+    fs.writeFileSync(
+      state,
+      JSON.stringify([
+        {
+          name: 'tiongcreative',
+          transport: { type: 'stdio', command: gone, args: ['-y', '@tiongcreative/assistant-mcp'] },
+        },
+      ]),
+    );
+    assert.equal(chatGptStatus(cli).broken, true);
+    assert.deepEqual(installChatGpt({ cli }), { already: false, replaced: true });
+    const servers = JSON.parse(fs.readFileSync(state, 'utf8'));
+    assert.equal(servers.length, 1);
+    assert.equal(servers[0].transport.command, launcher().command);
+    assert.equal(chatGptStatus(cli).broken, false);
   });
 });

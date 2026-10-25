@@ -40,7 +40,7 @@ open, ask Claude what's on this week.
 The assistant only offers tools for the apps installed on your Mac, checked when Claude
 Desktop starts it, so after installing another app restart Claude Desktop once.
 
-To remove it: `npx @tiongcreative/assistant-mcp uninstall`. To check: `npx @tiongcreative/assistant-mcp status`.
+To remove it: `npx @tiongcreative/assistant-mcp uninstall`. To check: `npx @tiongcreative/assistant-mcp status`. If the assistant stops appearing after you upgrade Node.js, `status` says so, and running the install command again fixes it. Run these commands from any folder except a checkout of this package.
 
 ### ChatGPT desktop on the same Mac
 
@@ -54,7 +54,7 @@ It registers the same local server in ChatGPT's MCP settings. Restart ChatGPT, t
 **Allow assistant access** in each app, and type `/mcp` in ChatGPT to check the connection.
 The Tiong Creative apps must be open on this Mac. This setup is for ChatGPT desktop, not
 ChatGPT in a web browser. To check or remove it, run `npx @tiongcreative/assistant-mcp status chatgpt`
-or `npx @tiongcreative/assistant-mcp uninstall chatgpt`.
+or `npx @tiongcreative/assistant-mcp uninstall chatgpt`. If it stops appearing after you upgrade Node.js, `status chatgpt` says so, and running the install chatgpt command again fixes it.
 
 For Claude Code: `claude mcp add tiongcreative -- npx -y @tiongcreative/assistant-mcp`.
 

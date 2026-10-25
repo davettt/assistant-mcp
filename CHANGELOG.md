@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.1] - 2026-10-25
+
+### Fixed
+
+- The assistant stopped starting in Claude Desktop and ChatGPT after a Node upgrade under nvm. `install` recorded the npx path inside the versioned Node folder (e.g. `~/.nvm/versions/node/v24.20.0/bin/npx`), which nvm removes on upgrade. `install` now writes a stable entry point: under nvm, `~/.nvm/nvm-exec npx -y @tiongcreative/assistant-mcp` with `NODE_VERSION=default` (runs whichever Node the default alias names); under Volta, `~/.volta/bin/npx`; otherwise the npx beside node as before (Homebrew, official installer).
+- `install chatgpt` refused to replace its own entry once the recorded npx path differed ("already exists"), and `uninstall chatgpt` refused too ("does not match"), so the only way out was `codex mcp remove`. Entries this package wrote are now recognised by their args and replaced; an unrelated entry named tiongcreative is still left alone.
+
+### Added
+
+- `status` and `status chatgpt` report when the entry points at a program that is no longer on the Mac, and say to run install again.
+- Tests: launcher choice for nvm, Volta and plain installs; repairing a stale entry in both clients.
+
 ## [0.7.0] - 2026-10-24
 
 ### Added
