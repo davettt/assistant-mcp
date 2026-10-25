@@ -82,6 +82,10 @@ function invoiceLine(i, byId, today) {
   };
 }
 
+/** This app's line in the server's instructions: which tool does which job. */
+export const instructions =
+  "Client Manager: clients, their jobs, tasks on jobs, reminders, invoices and an activity log. One client's details, jobs and job ids: client_manager_client. A call, meeting or email that happened: client_manager_log_activity. Complete or snooze a reminder: client_manager_update_reminder. Invoices can be read but not changed.";
+
 export const tools = [
   {
     name: 'client_manager_reminders',

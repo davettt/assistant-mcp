@@ -91,6 +91,10 @@ async function findScenario(conn, name) {
   };
 }
 
+/** This app's line in the server's instructions: which tool does which job. */
+export const instructions =
+  'Budget Planner: recurring expenses, accounts and what-if scenarios. Give its figures as the tools return them (budget_planner_budget, budget_planner_scenarios) rather than working them out. A new amount from a date: budget_planner_update_expense.';
+
 export const tools = [
   {
     name: 'budget_planner_budget',

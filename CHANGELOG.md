@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.7.0] - 2026-10-24
+
+### Added
+
+- `lists_and_notes_update_note` takes an optional `category`: a note can be moved to another existing category in the same call as appending, replacing text or renaming. An unknown category returns the category list. Needs Lists & Notes 1.23.0, like the other writes.
+- Server instructions: the server sends an MCP `instructions` text on connect (`src/instructions.js`) with the common rules (check all of an app's tools before saying something cannot be done; start with `whats_on`; closed apps are reported and `open_app` runs only after the user agrees; nothing deletes; names match ignoring case) and one line per installed app saying which tool does which job. Each app module exports its own `instructions` line.
+- Unit tests (`tests/instructions.test.js`): every tool name in the instructions and in sibling-tool references inside descriptions must exist; each installed app has a line; uninstalled apps are left out.
+- End-to-end Lists & Notes test covers moving a note via `update_note` and the instructions reaching the client.
+- Gift Keeper (needs Gift Keeper 1.4.0; older apps get an "update the app" reply):
+  - `gift_keeper_add_occasion` takes an optional `startYear` (year born or married) for a yearly birthday, anniversary or wedding; refused for other occasions.
+  - `gift_keeper_upcoming` shows `years` (age being turned, or years married) and `milestone` (birthdays 18/21/30/40/50/60/70/80/90/100, anniversaries 1/10/25/40/50/60) when the start year is known; the app lists milestones up to 180 days ahead.
+  - New `gift_keeper_update_idea`: change an idea by id (name, person by name or null to unassign, notes, price, link, priority; null clears notes, price or link).
+- Gift Keeper end-to-end test passes the checkout's version to the app server (`APP_VERSION`) and covers start years, milestones past the usual 90-day window, recurrence stored as annual, and `update_idea`.
+
+### Changed
+
+- Tool descriptions point to each other: `lists_and_notes_update_items` names `lists_and_notes_move`, and `lists_and_notes_move` notes that `update_note` can also move a note. Added because an assistant read `update_note`'s description as the full list of what it could do and missed `lists_and_notes_move`.
+- `.nvmrc` bumped from 24.20.0 to 24.22.1.
+- body-parser 2.3.0 to 2.4.0 (through the MCP SDK's Express) for GHSA-27r3-jxmh-p828. The server runs over stdio and never loads it.
+
+### Fixed
+
+- `gift_keeper_add_occasion` sent `recurrence: 'yearly'`, but Gift Keeper only repeats occasions marked `'annual'`, so yearly occasions added through the assistant since 0.2.0 were not treated as yearly by the app. It now sends `'annual'`. Occasion types are sent lower case so "Birthday" still gets milestones. Existing occasions saved as 'yearly' need fixing on the Gift Keeper side.
+
 ## [0.6.0] - 2026-10-21
 
 ### Added

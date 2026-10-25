@@ -57,6 +57,10 @@ async function loadContext(conn) {
 
 // --- tools ---
 
+/** This app's line in the server's instructions: which tool does which job. */
+export const instructions =
+  'Due Again: recurring commitments with due dates. Done: due_again_complete (it works out the next date). Not this time: due_again_skip. Move only this occurrence: due_again_reschedule. Change the schedule, the date for good, the name, cost or category: due_again_update_item. Item ids come from due_again_items.';
+
 export const tools = [
   {
     name: 'due_again_items',

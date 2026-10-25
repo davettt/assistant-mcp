@@ -190,6 +190,10 @@ async function loadDeck(conn, wanted) {
   return { deck: await apiCall(conn, 'GET', `/api/decks/${encodeURIComponent(found.id)}`) };
 }
 
+/** This app's line in the server's instructions: which tool does which job. */
+export const instructions =
+  'DiagramSnap: diagrams and slide decks. To change a drawing, read it first (diagramsnap_diagram or diagramsnap_deck), then send the whole diagramData back with the updatedAt it read. If the reply says it was changed in the meantime, read it again rather than resending.';
+
 export const tools = [
   {
     name: 'diagramsnap_list',

@@ -12,6 +12,41 @@ export const app = {
   dataDir: 'gift-keeper',
 };
 
+// Gift Keeper 1.4.0 added the start year (year born, year married) and editing ideas with
+// null to clear a field. Older apps would drop startYear without saying so.
+const START_YEAR_FROM = '1.4.0';
+const START_YEAR_TYPES = ['birthday', 'anniversary', 'wedding'];
+// Mirrors gift-keeper/server/data.js isMilestoneYear (its /api/upcoming does not return the
+// flag), so keep the two lists in step.
+const BIRTHDAY_MILESTONES = [18, 21, 30, 40, 50, 60, 70, 80, 90, 100];
+const ANNIVERSARY_MILESTONES = [1, 10, 25, 40, 50, 60];
+
+function olderThan(version, min) {
+  const a = String(version ?? '0')
+    .split('.')
+    .map(Number);
+  const b = min.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] || 0) !== b[i]) return (a[i] || 0) < b[i];
+  }
+  return false;
+}
+
+/** The app's version must support the change; returns a message to send back, or null. */
+function needsUpdate(conn, what) {
+  if (!olderThan(conn.version, START_YEAR_FROM)) return null;
+  return `${what} needs Gift Keeper ${START_YEAR_FROM} or later (this Mac has ${conn.version ?? 'an older version'}).`;
+}
+
+/** How many years this occasion marks (age turning, years married), and whether it is a milestone. */
+function yearsMarked(occasion, year) {
+  if (!occasion.startYear || occasion.recurrence !== 'annual') return {};
+  if (!START_YEAR_TYPES.includes(occasion.type)) return {};
+  const years = Number(year) - occasion.startYear;
+  const milestones = occasion.type === 'birthday' ? BIRTHDAY_MILESTONES : ANNIVERSARY_MILESTONES;
+  return { years, milestone: milestones.includes(years) };
+}
+
 function summariseOccasion(u) {
   return {
     occasionId: u.occasion.id,
@@ -21,6 +56,7 @@ function summariseOccasion(u) {
     // calendar day shifts back by one for anyone east of UTC.
     date: todayLocal(new Date(u.nextDate)),
     daysUntil: u.daysUntil,
+    ...yearsMarked(u.occasion, u.year),
     people: u.people.map((p) => p.name),
     giftChosen: u.hasGiftSelected,
     openGifts: u.openGiftCount,
@@ -54,11 +90,15 @@ async function findPerson(conn, name) {
   };
 }
 
+/** This app's line in the server's instructions: which tool does which job. */
+export const instructions =
+  'Gift Keeper: people, occasions, gift ideas and the gifts being tracked. Ideas not yet tied to an occasion are in gift_keeper_ideas (change one: gift_keeper_update_idea); tracked gifts are in gift_keeper_gifts. Move a gift along (ordered, bought, wrapped): gift_keeper_update_gift, or gift_keeper_mark_gift_given. An occasion finished for this year: gift_keeper_complete_occasion.';
+
 export const tools = [
   {
     name: 'gift_keeper_upcoming',
     description:
-      'Upcoming occasions in Gift Keeper (birthdays, anniversaries, holidays and custom dates) with who they are for, whether a gift has been chosen, the budget and what has been spent so far.',
+      'Upcoming occasions in Gift Keeper (birthdays, anniversaries, holidays and custom dates) with who they are for, whether a gift has been chosen, the budget and what has been spent so far. When the start year is known, years is the age being turned or the years married, and milestone marks a big one (such as an 18th, 21st or 50th birthday, or a 25th anniversary); milestones show up to 180 days ahead.',
     input: z.object({
       withinDays: z
         .number()
@@ -102,7 +142,7 @@ export const tools = [
   {
     name: 'gift_keeper_ideas',
     description:
-      "Gift ideas saved in Gift Keeper: the pool of possible gifts, including ones not yet tied to an occasion. Filter by person's name or search the idea text. This is where to look before suggesting something new.",
+      "Gift ideas saved in Gift Keeper: the pool of possible gifts, including ones not yet tied to an occasion. Filter by person's name or search the idea text. This is where to look before suggesting something new. Change an idea with gift_keeper_update_idea and its id from here.",
     input: z.object({
       person: z.string().max(100).optional(),
       search: z.string().max(100).optional(),
@@ -235,6 +275,64 @@ export const tools = [
     },
   },
   {
+    name: 'gift_keeper_update_idea',
+    description:
+      'Change a gift idea in Gift Keeper: its name, who it is for (by name, or null to leave it unassigned), notes, price, link or priority. null clears notes, price or link. Use an idea id from gift_keeper_ideas. If the person does not match, the reply lists the people.',
+    input: z.object({
+      ideaId: z.string().min(1),
+      idea: z.string().trim().min(1).max(200).optional().describe('New name'),
+      person: z.string().min(1).max(100).nullable().optional(),
+      notes: z.string().max(2000).nullable().optional(),
+      price: z.number().min(0).nullable().optional(),
+      url: z.string().url().max(2000).nullable().optional(),
+      priority: z.enum(['low', 'normal', 'high']).optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const old = needsUpdate(conn, 'Changing ideas');
+      if (old) return { app: app.name, changed: false, message: old };
+      const { ideaId, idea, person, ...rest } = input;
+      const body = { ...rest };
+      if (idea !== undefined) body.name = idea;
+      if (person === null) body.personId = null;
+      else if (person !== undefined) {
+        const found = await findPerson(conn, person);
+        if (!found.person)
+          return {
+            app: app.name,
+            changed: false,
+            message: `No one called "${person}" in Gift Keeper.`,
+            people: found.names,
+          };
+        body.personId = found.person.id;
+      }
+      if (Object.keys(body).length === 0) {
+        return {
+          app: app.name,
+          changed: false,
+          message: 'Nothing to change: give a name, person, notes, price, link or priority.',
+        };
+      }
+      const updated = await apiCall(conn, 'PUT', `/api/ideas/${encodeURIComponent(ideaId)}`, body);
+      const people = await apiCall(conn, 'GET', '/api/people');
+      return {
+        app: app.name,
+        changed: true,
+        idea: {
+          id: updated.id,
+          name: updated.name,
+          person: people.find((p) => p.id === updated.personId)?.name ?? null,
+          price: updated.price ?? null,
+          priority: updated.priority ?? 'normal',
+          url: updated.url || undefined,
+          notes: updated.notes || undefined,
+        },
+      };
+    },
+  },
+  {
     name: 'gift_keeper_mark_gift_given',
     description: 'Mark a gift in Gift Keeper as given. Use a gift id from gift_keeper_upcoming.',
     input: z.object({ giftId: z.string().min(1) }),
@@ -325,7 +423,7 @@ export const tools = [
   {
     name: 'gift_keeper_add_occasion',
     description:
-      'Add an occasion in Gift Keeper (a birthday, anniversary, holiday or custom date) for one or more people by name, yearly or one-off, with an optional budget. If a name does not match, the reply lists the people.',
+      'Add an occasion in Gift Keeper (a birthday, anniversary, holiday or custom date) for one or more people by name, yearly or one-off, with an optional budget. For a yearly birthday, anniversary or wedding, give startYear (the year born or married) so the app shows the age or years and flags milestones. If a name does not match, the reply lists the people.',
     input: z.object({
       name: z.string().trim().min(1).max(200),
       date: z
@@ -336,11 +434,31 @@ export const tools = [
       repeats: z.enum(['yearly', 'one-off']).default('yearly'),
       type: z.string().max(50).optional().describe('e.g. birthday, anniversary, christmas, custom'),
       budget: z.number().min(0).optional(),
+      startYear: z
+        .number()
+        .int()
+        .min(1900)
+        .max(new Date().getFullYear())
+        .optional()
+        .describe('Year born (birthday) or married (anniversary, wedding)'),
     }),
     write: true,
     async run(input) {
       const conn = await appConnection(app);
       if (!conn.ok) return notAvailable(app, conn);
+      // The app's types are lower case; "Birthday" would miss its milestones.
+      const type = input.type?.trim().toLowerCase() || undefined;
+      if (input.startYear !== undefined) {
+        const old = needsUpdate(conn, 'A start year');
+        if (old) return { app: app.name, added: false, message: old };
+        if (input.repeats !== 'yearly' || !START_YEAR_TYPES.includes(type ?? '')) {
+          return {
+            app: app.name,
+            added: false,
+            message: 'A start year is only for a yearly birthday, anniversary or wedding.',
+          };
+        }
+      }
       const people = await apiCall(conn, 'GET', '/api/people');
       const ids = [];
       const missing = [];
@@ -361,9 +479,11 @@ export const tools = [
         name: input.name,
         date: input.date,
         personIds: ids,
-        recurrence: input.repeats,
-        ...(input.type ? { type: input.type } : {}),
+        // The app calls a yearly occasion 'annual'; anything else is treated as one-off.
+        recurrence: input.repeats === 'yearly' ? 'annual' : 'one-off',
+        ...(type ? { type } : {}),
         ...(input.budget !== undefined ? { budget: input.budget } : {}),
+        ...(input.startYear !== undefined ? { startYear: input.startYear } : {}),
       });
       return {
         app: app.name,
@@ -372,7 +492,8 @@ export const tools = [
           id: occasion.id,
           name: occasion.name,
           date: occasion.date,
-          repeats: occasion.recurrence,
+          repeats: occasion.recurrence === 'annual' ? 'yearly' : 'one-off',
+          startYear: occasion.startYear ?? null,
           people: input.people,
         },
       };

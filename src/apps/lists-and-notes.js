@@ -114,6 +114,10 @@ function itemMatches(item, text) {
   return item.text.trim().toLowerCase() === text.trim().toLowerCase();
 }
 
+/** This app's line in the server's instructions: which tool does which job. */
+export const instructions =
+  "Lists & Notes: lists (with items) and notes, each in one category. Change a note's text, title or category: lists_and_notes_update_note. Move a list to another category: lists_and_notes_move. Tick, untick or reword items: lists_and_notes_update_items. A category must exist before anything goes in it: lists_and_notes_add_category.";
+
 export const tools = [
   {
     name: 'lists_and_notes_lists',
@@ -259,7 +263,7 @@ export const tools = [
   {
     name: 'lists_and_notes_update_items',
     description:
-      "Tick off, untick, reword or add notes to items on a list in Lists & Notes. Name the list and each item by its current text. Items not mentioned are left as they are. If an item's text does not match, the reply lists the items.",
+      "Tick off, untick, reword or add notes to items on a list in Lists & Notes. Name the list and each item by its current text. Items not mentioned are left as they are. If an item's text does not match, the reply lists the items. To move the list to another category, use lists_and_notes_move.",
     input: z.object({
       list: z.string().min(1).max(75),
       changes: z
@@ -404,12 +408,13 @@ export const tools = [
   {
     name: 'lists_and_notes_update_note',
     description:
-      "Change a note in Lists & Notes, by title: add text to the end (append), replace its text, or rename it. If the user edits the note at the same moment, the change is applied to their latest version; the app keeps the previous text in the note's history.",
+      "Change a note in Lists & Notes, by title: add text to the end (append), replace its text, rename it, or move it to another category (which must already exist; if it does not, the reply lists the categories). Any of these can be done in one call. If the user edits the note at the same moment, the change is applied to their latest version; the app keeps the previous text in the note's history.",
     input: z.object({
       title: z.string().min(1).max(75).describe('The note as it is titled now'),
       append: z.string().max(200000).optional().describe('Text added on a new line at the end'),
       content: z.string().max(200000).optional().describe('Replaces the whole text'),
       newTitle: z.string().trim().min(1).max(75).optional(),
+      category: z.string().min(1).max(50).optional().describe('Moves the note to this category'),
     }),
     write: true,
     async run(input) {
@@ -420,12 +425,14 @@ export const tools = [
       if (
         input.append === undefined &&
         input.content === undefined &&
-        input.newTitle === undefined
+        input.newTitle === undefined &&
+        input.category === undefined
       ) {
         return {
           app: app.name,
           changed: false,
-          message: 'Nothing to change: give text to append, new content or a new title.',
+          message:
+            'Nothing to change: give text to append, new content, a new title or a category.',
         };
       }
       if (input.append !== undefined && input.content !== undefined) {
@@ -434,6 +441,18 @@ export const tools = [
           changed: false,
           message: 'Give either append or content, not both.',
         };
+      }
+      let category;
+      if (input.category !== undefined) {
+        const categories = await apiCall(conn, 'GET', '/api/data/categories');
+        category = findCategory(categories, input.category);
+        if (!category)
+          return {
+            app: app.name,
+            changed: false,
+            message: `No category called "${input.category}".`,
+            categories,
+          };
       }
       const first = await findNote(conn, input.title);
       if (!first.note)
@@ -447,6 +466,7 @@ export const tools = [
       const load = () => apiCall(conn, 'GET', `/api/data/notes/${encodeURIComponent(id)}`);
       return withRetry(load, async (note) => {
         const body = { baseModified: note.metadata?.modified };
+        if (category !== undefined) body.category = category;
         if (input.content !== undefined) body.content = input.content;
         if (input.append !== undefined) {
           const current = typeof note.content === 'string' ? note.content : '';
@@ -554,7 +574,7 @@ export const tools = [
   {
     name: 'lists_and_notes_move',
     description:
-      'Move a list or a note to another category in Lists & Notes. Name the list or the note title, and a category that already exists; if it does not, the reply lists the categories.',
+      'Move a list or a note to another category in Lists & Notes. Name the list or the note title, and a category that already exists; if it does not, the reply lists the categories. lists_and_notes_update_note can also move a note while changing its text or title.',
     input: z.object({
       list: z.string().min(1).max(75).optional(),
       note: z.string().min(1).max(75).optional().describe('A note title'),

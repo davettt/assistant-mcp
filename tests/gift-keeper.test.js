@@ -73,6 +73,9 @@ describe(
           PORT: String(port),
           DATA_DIR: path.join(root, 'gift-keeper'),
           NODE_ENV: 'test',
+          // The packaged app reports its version; the bare server needs it passed in.
+          APP_VERSION: JSON.parse(fs.readFileSync(path.join(GIFT_KEEPER, 'package.json'), 'utf8'))
+            .version,
         },
         stdio: 'ignore',
       });
@@ -125,9 +128,10 @@ describe(
         name: "Bob's birthday",
         type: 'birthday',
         date: soonKey,
-        recurrence: 'yearly',
+        recurrence: 'annual',
         personIds: [bob.id],
         budget: 50,
+        startYear: soon.getFullYear() - 30,
       });
       const people = parse(
         await client.callTool({ name: 'gift_keeper_people', arguments: { name: 'bob' } }),
@@ -142,6 +146,8 @@ describe(
       assert.equal(up.occasions[0].giftChosen, false);
       assert.equal(up.occasions[0].date, soonKey, 'calendar day must not shift with the timezone');
       assert.equal(up.occasions[0].daysUntil, 10);
+      assert.equal(up.occasions[0].years, 30);
+      assert.equal(up.occasions[0].milestone, true);
       const on = parse(await client.callTool({ name: 'whats_on', arguments: { days: 30 } }));
       assert.ok(on.items.some((i) => i.app === 'Gift Keeper' && i.title.includes('Bob')));
     });
@@ -245,6 +251,10 @@ describe(
       );
       assert.equal(occ.added, true);
       assert.equal(occ.occasion.repeats, 'yearly');
+      const stored = (await (await fetch(`${base}/api/occasions`)).json()).find(
+        (o) => o.id === occ.occasion.id,
+      );
+      assert.equal(stored.recurrence, 'annual', 'the app only repeats annual occasions');
       const up = parse(await client.callTool({ name: 'gift_keeper_upcoming', arguments: {} }));
       const bobs = up.occasions.find((o) => o.name === "Bob's birthday");
       const gift = bobs.gifts[0];
@@ -268,6 +278,109 @@ describe(
         !after.occasions.some((o) => o.occasionId === bobs.occasionId),
         'a completed occasion leaves upcoming',
       );
+    });
+
+    it('adds start years, and shows milestones further ahead than other occasions', async () => {
+      const ahead = new Date();
+      ahead.setDate(ahead.getDate() + 150);
+      const aheadKey = `${ahead.getFullYear()}-${String(ahead.getMonth() + 1).padStart(2, '0')}-${String(ahead.getDate()).padStart(2, '0')}`;
+      const fiftieth = parse(
+        await client.callTool({
+          name: 'gift_keeper_add_occasion',
+          arguments: {
+            name: "Alice's birthday",
+            date: aheadKey,
+            people: ['Alice'],
+            type: 'Birthday',
+            startYear: ahead.getFullYear() - 50,
+          },
+        }),
+      );
+      assert.equal(fiftieth.added, true, JSON.stringify(fiftieth));
+      assert.equal(fiftieth.occasion.startYear, ahead.getFullYear() - 50);
+      const plain = parse(
+        await client.callTool({
+          name: 'gift_keeper_add_occasion',
+          arguments: {
+            name: 'Anniversary',
+            date: aheadKey,
+            people: ['Alice'],
+            type: 'anniversary',
+            startYear: ahead.getFullYear() - 7,
+          },
+        }),
+      );
+      assert.equal(plain.added, true, JSON.stringify(plain));
+      const oneOff = parse(
+        await client.callTool({
+          name: 'gift_keeper_add_occasion',
+          arguments: {
+            name: 'Graduation',
+            date: aheadKey,
+            people: ['Alice'],
+            repeats: 'one-off',
+            type: 'birthday',
+            startYear: 2000,
+          },
+        }),
+      );
+      assert.equal(oneOff.added, false);
+      const up = parse(await client.callTool({ name: 'gift_keeper_upcoming', arguments: {} }));
+      const alices = up.occasions.find((o) => o.name === "Alice's birthday");
+      assert.ok(alices, 'a milestone shows past the usual 90 days');
+      assert.equal(alices.years, 50);
+      assert.equal(alices.milestone, true);
+      assert.ok(
+        !up.occasions.some((o) => o.name === 'Anniversary'),
+        'an ordinary occasion 150 days out stays hidden',
+      );
+    });
+
+    it('changes an idea: renames, reassigns, unassigns and clears fields', async () => {
+      const [first] = parse(
+        await client.callTool({ name: 'gift_keeper_ideas', arguments: {} }),
+      ).ideas;
+      const moved = parse(
+        await client.callTool({
+          name: 'gift_keeper_update_idea',
+          arguments: {
+            ideaId: first.id,
+            idea: 'Burr grinder',
+            person: 'alice',
+            price: 120,
+            notes: 'Ask about colours',
+          },
+        }),
+      );
+      assert.equal(moved.changed, true, JSON.stringify(moved));
+      assert.equal(moved.idea.name, 'Burr grinder');
+      assert.equal(moved.idea.person, 'Alice');
+      assert.equal(moved.idea.price, 120);
+      const cleared = parse(
+        await client.callTool({
+          name: 'gift_keeper_update_idea',
+          arguments: { ideaId: first.id, person: null, price: null, notes: null },
+        }),
+      );
+      assert.equal(cleared.idea.person, null);
+      assert.equal(cleared.idea.price, null);
+      assert.equal(cleared.idea.notes, undefined);
+      const stored = (await (await fetch(`${base}/api/ideas`)).json()).find(
+        (i) => i.id === first.id,
+      );
+      assert.ok(!('personId' in stored) && !('price' in stored), JSON.stringify(stored));
+      const miss = parse(
+        await client.callTool({
+          name: 'gift_keeper_update_idea',
+          arguments: { ideaId: first.id, person: 'Zed' },
+        }),
+      );
+      assert.equal(miss.changed, false);
+      assert.ok(miss.people.includes('Bob'));
+      const nothing = parse(
+        await client.callTool({ name: 'gift_keeper_update_idea', arguments: { ideaId: first.id } }),
+      );
+      assert.equal(nothing.changed, false);
     });
   },
 );

@@ -1,6 +1,6 @@
 {
   "name": "@tiongcreative/assistant-mcp",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "MCP server that lets an AI assistant on your Mac use your Tiong Creative apps while they are open.",
   "type": "module",
   "bin": {
@@ -34,7 +34,7 @@
     "prepare": "husky",
     "validate": "npm run lint && npm run format:check",
     "quality": "npm run validate && npm run sast && npm run security && npm run secrets && npm run licenses && npm run deps:check && npm run review",
-    "test:unit": "node --test tests/dates.test.js tests/install.test.js tests/chatgpt-install.test.js",
+    "test:unit": "node --test tests/dates.test.js tests/instructions.test.js tests/install.test.js tests/chatgpt-install.test.js",
     "test:integration": "node --test tests/due-again.test.js tests/gift-keeper.test.js tests/client-manager.test.js tests/lists-and-notes.test.js tests/budget-planner.test.js tests/diagramsnap.test.js"
   },
   "license": "MIT",

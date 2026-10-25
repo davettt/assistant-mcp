@@ -274,6 +274,23 @@ describe(
         }),
       );
       assert.equal(renamed.note.title, 'Packing list');
+      const recategorised = parse(
+        await client.callTool({
+          name: 'lists_and_notes_update_note',
+          arguments: { title: 'Packing list', category: 'WORK', append: 'Charger' },
+        }),
+      );
+      assert.equal(recategorised.changed, true, JSON.stringify(recategorised));
+      assert.equal(recategorised.note.category, 'work');
+      const noCategory = parse(
+        await client.callTool({
+          name: 'lists_and_notes_update_note',
+          arguments: { title: 'Packing list', category: 'garage' },
+        }),
+      );
+      assert.equal(noCategory.changed, false);
+      assert.ok(noCategory.categories.includes('personal'));
+      assert.match(client.getInstructions() ?? '', /lists_and_notes_update_note/);
       const nothing = parse(
         await client.callTool({
           name: 'lists_and_notes_update_note',

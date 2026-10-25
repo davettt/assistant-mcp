@@ -12,6 +12,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { ApiError, IMAGES, isInstalled } from './connection.js';
 import { runCli } from './install.js';
+import { buildInstructions } from './instructions.js';
 import * as dueAgain from './apps/due-again.js';
 import * as giftKeeper from './apps/gift-keeper.js';
 import * as clientManager from './apps/client-manager.js';
@@ -54,7 +55,10 @@ function failure(err) {
   return { isError: true, content: [{ type: 'text', text: message }] };
 }
 
-const server = new McpServer({ name: 'tiongcreative-assistant', version });
+const server = new McpServer(
+  { name: 'tiongcreative-assistant', version },
+  { instructions: buildInstructions(APPS) },
+);
 
 server.registerTool(
   'whats_on',
