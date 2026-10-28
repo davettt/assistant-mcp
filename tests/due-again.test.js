@@ -222,6 +222,20 @@ describe(
       );
       assert.equal(moved.changed, true);
       assert.equal(moved.item.nextDue, '2027-06-01');
+      const reminded = parse(
+        await client.callTool({
+          name: 'due_again_update_item',
+          arguments: { itemId: id, reminders: [1, 7] },
+        }),
+      );
+      assert.deepEqual(reminded.item.reminders, [7, 1], 'the app sorts them, furthest first');
+      const cleared = parse(
+        await client.callTool({
+          name: 'due_again_update_item',
+          arguments: { itemId: id, reminders: [] },
+        }),
+      );
+      assert.equal(cleared.item.reminders, undefined);
       const nothing = parse(
         await client.callTool({ name: 'due_again_update_item', arguments: { itemId: id } }),
       );

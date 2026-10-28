@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.8.0] - 2026-10-27
+
+### Added
+
+- `assistant_info` tool: the server's version, the Node version, each installed app with its version, whether it can be reached, its tools, and any app that needs a newer version. The server instructions point to it.
+- Budget Planner `budget_planner_add_scenario`: adds a new scenario, or a copy of an existing one (`copyFrom`) with only the given fields changed.
+- Budget Planner `budget_planner_update_scenario` takes `expenses`: add, change, rename or remove the scenario's own costs (strata, council rates, water, one-off costs such as stamp duty), matched by name.
+- Budget Planner `budget_planner_update_balances`: sets several account balances at once by account name, with an `asOf` date. Needs Budget Planner 2.3.0; older versions get a reply saying so.
+- Client Manager `client_manager_add_invoice`: records an invoice made elsewhere (Square, Xero) with its own number and total, linked to a job and, for a recurring job, the renewal period it pays for. It can also record the invoice as paid. Refuses a number already in use and lists the job's valid periods when the period is wrong.
+- Due Again `due_again_update_item` changes an item's advance reminders (the list given replaces the existing one), and item summaries show the reminders.
+
+### Changed
+
+- `client_manager_client` gives each job in full: description, location, tags, amount paid and, for recurring jobs, the recurrence, billing in advance or arrears, the current period, the next renewal, the last three periods, and the invoices on the job with the period each covers.
+- `client_manager_invoices` shows the jobs and period each invoice covers, whether it came from another system, and its link.
+- The app version check is shared in `src/connection.js`; Lists & Notes, Gift Keeper and Budget Planner export `needs` lists that `assistant_info` reports.
+- The help tool, resources and prompts move to 0.9.0.
+
 ## [0.7.1] - 2026-10-25
 
 ### Fixed

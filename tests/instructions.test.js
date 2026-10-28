@@ -11,7 +11,7 @@ import * as budgetPlanner from '../src/apps/budget-planner.js';
 import * as diagramSnap from '../src/apps/diagramsnap.js';
 
 const ALL = [dueAgain, giftKeeper, clientManager, listsAndNotes, budgetPlanner, diagramSnap];
-const SERVER_TOOLS = ['whats_on', 'open_app'];
+const SERVER_TOOLS = ['whats_on', 'open_app', 'assistant_info'];
 const toolNames = (text) => text.match(/\b[a-z]+(?:_[a-z]+)+\b/g) ?? [];
 
 describe('server instructions', () => {

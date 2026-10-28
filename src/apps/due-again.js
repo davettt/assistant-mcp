@@ -37,6 +37,7 @@ function summarise(item, categories, today, dueSoonDays) {
     expectedCost: item.expectedCost,
     currency: item.currency ?? null,
     costVaries: item.costVaries ?? false,
+    reminders: item.reminders?.length ? item.reminders : undefined,
     notes: item.notes || undefined,
   };
 }
@@ -59,7 +60,7 @@ async function loadContext(conn) {
 
 /** This app's line in the server's instructions: which tool does which job. */
 export const instructions =
-  'Due Again: recurring commitments with due dates. Done: due_again_complete (it works out the next date). Not this time: due_again_skip. Move only this occurrence: due_again_reschedule. Change the schedule, the date for good, the name, cost or category: due_again_update_item. Item ids come from due_again_items.';
+  'Due Again: recurring commitments with due dates. Done: due_again_complete (it works out the next date). Not this time: due_again_skip. Move only this occurrence: due_again_reschedule. Change the date for good, the name, cost, category or advance reminders: due_again_update_item. Item ids come from due_again_items.';
 
 export const tools = [
   {
@@ -247,7 +248,7 @@ export const tools = [
   {
     name: 'due_again_update_item',
     description:
-      'Change a Due Again item: move its next due date, rename it, change the expected cost, notes or category. Use the item id from due_again_items. Only the fields given change. To record that it was done use due_again_complete; to skip this occurrence use due_again_skip.',
+      'Change a Due Again item: move its next due date, rename it, change the expected cost, notes, category or its advance reminders (days before the due date; the list given replaces the old one, [] for none). Use the item id from due_again_items. Only the fields given change. To record that it was done use due_again_complete; to skip this occurrence use due_again_skip.',
     input: z.object({
       itemId: z.string().min(1),
       nextDue: z
@@ -261,6 +262,11 @@ export const tools = [
       notes: z.string().max(10000).optional(),
       description: z.string().max(2000).optional(),
       category: z.string().max(50).optional().describe('Category name'),
+      reminders: z
+        .array(z.number().int().min(0).max(3650))
+        .max(10)
+        .optional()
+        .describe('Days before the due date to remind, e.g. [7, 1]; replaces the current list'),
     }),
     write: true,
     async run(input) {
@@ -286,7 +292,8 @@ export const tools = [
         return {
           app: app.name,
           changed: false,
-          message: 'Nothing to change: give a date, title, cost, notes, description or category.',
+          message:
+            'Nothing to change: give a date, title, cost, notes, description, category or reminders.',
         };
       }
       const item = await apiCall(conn, 'PUT', `/api/items/${encodeURIComponent(itemId)}`, changes);

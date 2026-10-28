@@ -7,7 +7,7 @@
 // is no delete tool. Talks to the app's local API with the per-launch token it writes while
 // "Allow assistant access" is on (list-manager/assistant-access.js).
 import { z } from 'zod';
-import { ApiError, appConnection, apiCall, notAvailable } from '../connection.js';
+import { ApiError, appConnection, apiCall, notAvailable, olderThan } from '../connection.js';
 
 export const app = {
   id: 'lists-and-notes',
@@ -54,16 +54,11 @@ function matches(text, q) {
 const WRITES_FROM = '1.23.0';
 const CATEGORY_WRITES_FROM = '1.24.0';
 
-function olderThan(version, min) {
-  const a = String(version ?? '0')
-    .split('.')
-    .map(Number);
-  const b = min.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if ((a[i] || 0) !== b[i]) return (a[i] || 0) < b[i];
-  }
-  return false;
-}
+/** What needs a newer app than some have, for assistant_info. */
+export const needs = [
+  { version: WRITES_FROM, for: 'Changing lists and notes' },
+  { version: CATEGORY_WRITES_FROM, for: 'Adding and renaming categories' },
+];
 
 /** The app's version must support writes; returns a result to send back, or null. */
 function needsUpdate(conn, min = WRITES_FROM, what = 'Changing lists and notes') {

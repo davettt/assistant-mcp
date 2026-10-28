@@ -3,10 +3,10 @@
 // routes: the period totals, upcoming payments, net worth and scenario results are worked
 // out by the app with the same code its window uses, never redone here. Expenses are
 // recurring budget items, not a record of spending. The token can add and change expenses
-// and scenarios only; there is no delete tool.
+// and scenarios, and from 2.3.0 set account balances; there is no delete tool.
 import { URLSearchParams } from 'node:url';
 import { z } from 'zod';
-import { appConnection, apiCall, notAvailable } from '../connection.js';
+import { appConnection, apiCall, notAvailable, olderThan } from '../connection.js';
 import { todayLocal as today } from '../dates.js';
 
 export const app = {
@@ -88,12 +88,88 @@ async function findScenario(conn, name) {
   return {
     scenario: scenarios.find((s) => same(s.name, name)),
     names: scenarios.map((s) => s.name),
+    scenarios,
   };
+}
+
+// Budget Planner 2.3.0 lets the token set account balances (PUT /api/accounts/balances),
+// with the date the balances were true.
+const BALANCES_FROM = '2.3.0';
+
+/** What needs a newer app than some have, for assistant_info. */
+export const needs = [{ version: BALANCES_FROM, for: 'Updating account balances' }];
+
+const LOAN = {
+  purchasePrice: z.number().min(0).max(1e10),
+  deposit: z.number().min(0).max(1e10),
+  interestRate: z.number().min(0).max(30).describe('Yearly, as a percentage'),
+  termYears: z.number().int().min(1).max(50),
+  repaymentFrequency: z.enum(['weekly', 'fortnightly', 'monthly']),
+};
+
+const SCENARIO_EXPENSE = z.object({
+  name: z.string().trim().min(1).max(100).describe('The cost as it is named in the scenario'),
+  amount: z.number().min(0).max(1e9).optional(),
+  frequency: FREQUENCY.optional(),
+  category: z.string().max(100).optional().describe('A budget category; one-off costs have none'),
+  rename: z.string().trim().min(1).max(100).optional(),
+  remove: z.boolean().optional().describe('Take this cost out of the scenario'),
+});
+
+/**
+ * Applies changes to a scenario's own costs (additionalExpenses), matched by name: an
+ * existing one is changed or removed, a new name is added. Returns { list } or { error }.
+ */
+function applyScenarioExpenses(current, changes, cats) {
+  const list = current.map((e) => ({ ...e }));
+  for (const c of changes) {
+    const i = list.findIndex((e) => same(e.name, c.name));
+    if (c.remove) {
+      if (i === -1) return { error: `The scenario has no cost called "${c.name}".` };
+      list.splice(i, 1);
+      continue;
+    }
+    let categoryId;
+    if (c.category !== undefined && c.category !== '') {
+      const cat = cats.find((x) => same(x.name, c.category) || x.id === c.category);
+      if (!cat) return { error: `No category called "${c.category}".`, categories: cats };
+      categoryId = cat.id;
+    }
+    if (i === -1) {
+      if (c.amount === undefined || !c.frequency) {
+        return { error: `A new cost ("${c.name}") needs an amount and a frequency.` };
+      }
+      list.push({
+        name: c.rename ?? c.name,
+        amount: c.amount,
+        frequency: c.frequency,
+        categoryId: c.frequency === 'one-off' ? '' : (categoryId ?? ''),
+      });
+      continue;
+    }
+    const e = list[i];
+    if (c.amount !== undefined) e.amount = c.amount;
+    if (c.frequency) e.frequency = c.frequency;
+    if (categoryId !== undefined) e.categoryId = categoryId;
+    if (e.frequency === 'one-off') e.categoryId = '';
+    if (c.rename) e.name = c.rename;
+  }
+  return { list };
+}
+
+function describeScenarioExpenses(list, cats) {
+  const names = new Map(cats.map((c) => [c.id, c.name]));
+  return list.map((e) => ({
+    name: e.name,
+    amount: e.amount,
+    frequency: e.frequency,
+    category: names.get(e.categoryId) || undefined,
+  }));
 }
 
 /** This app's line in the server's instructions: which tool does which job. */
 export const instructions =
-  'Budget Planner: recurring expenses, accounts and what-if scenarios. Give its figures as the tools return them (budget_planner_budget, budget_planner_scenarios) rather than working them out. A new amount from a date: budget_planner_update_expense.';
+  'Budget Planner: recurring expenses, accounts and what-if scenarios. Give its figures as the tools return them (budget_planner_budget, budget_planner_scenarios) rather than working them out. A new amount from a date: budget_planner_update_expense. New scenario, or a copy of one: budget_planner_add_scenario; its loan, dates and its own costs (strata, rates): budget_planner_update_scenario. Bank and card balances: budget_planner_update_balances.';
 
 export const tools = [
   {
@@ -163,7 +239,7 @@ export const tools = [
   {
     name: 'budget_planner_accounts',
     description:
-      'Open accounts in Budget Planner with their balances, and net worth (assets less what is owed).',
+      'Open accounts in Budget Planner with their balances, and net worth (assets less what is owed). To change balances, use budget_planner_update_balances.',
     input: z.object({}),
     async run() {
       const conn = await appConnection(app);
@@ -352,17 +428,18 @@ export const tools = [
   {
     name: 'budget_planner_update_scenario',
     description:
-      "Change a scenario in Budget Planner, by name: its loan (interest rate, price, deposit, term, repayment frequency), the date the money is needed by, the amount kept aside, or its name. The reply gives the scenario's results after the change.",
+      "Change a scenario in Budget Planner, by name: its loan (interest rate, price, deposit, term, repayment frequency), the date the money is needed by, the amount kept aside, its name, or its own costs (expenses: the extra costs the scenario brings, such as strata, council rates and water, recurring or one-off; a name it does not have yet is added, an existing one is changed, and remove takes one out). The reply gives the scenario's results after the change. To make a new scenario or a copy of one, use budget_planner_add_scenario.",
     input: z.object({
       scenario: z.string().min(1).max(100).describe('The scenario as it is named now'),
-      interestRate: z.number().min(0).max(30).optional().describe('Yearly, as a percentage'),
-      purchasePrice: z.number().min(0).max(1e10).optional(),
-      deposit: z.number().min(0).max(1e10).optional(),
-      termYears: z.number().int().min(1).max(50).optional(),
-      repaymentFrequency: z.enum(['weekly', 'fortnightly', 'monthly']).optional(),
+      interestRate: LOAN.interestRate.optional(),
+      purchasePrice: LOAN.purchasePrice.optional(),
+      deposit: LOAN.deposit.optional(),
+      termYears: LOAN.termYears.optional(),
+      repaymentFrequency: LOAN.repaymentFrequency.optional(),
       targetDate: DATE.nullable().optional(),
       keepAside: z.number().min(0).max(1e10).nullable().optional(),
       name: z.string().trim().min(1).max(100).optional(),
+      expenses: z.array(SCENARIO_EXPENSE).max(30).optional(),
     }),
     write: true,
     async run(input) {
@@ -400,7 +477,35 @@ export const tools = [
       }
       if (input.targetDate !== undefined) body.targetDate = input.targetDate;
       if (input.keepAside !== undefined) body.keepAside = input.keepAside;
-      if (input.name !== undefined) body.name = input.name;
+      if (input.name !== undefined) {
+        if (!same(input.name, scenario.name) && names.some((n) => same(n, input.name))) {
+          return {
+            app: app.name,
+            changed: false,
+            message: `There is already a scenario called "${input.name}".`,
+          };
+        }
+        body.name = input.name;
+      }
+      let cats = [];
+      if (input.expenses?.length) {
+        cats = await apiCall(conn, 'GET', '/api/categories');
+        const applied = applyScenarioExpenses(
+          scenario.additionalExpenses ?? [],
+          input.expenses,
+          cats,
+        );
+        if (applied.error) {
+          return {
+            app: app.name,
+            changed: false,
+            message: applied.error,
+            categories: applied.categories?.map((c) => c.name),
+            costs: describeScenarioExpenses(scenario.additionalExpenses ?? [], cats),
+          };
+        }
+        body.additionalExpenses = applied.list;
+      }
       if (Object.keys(body).length === 0) {
         return { app: app.name, changed: false, message: 'Nothing to change.' };
       }
@@ -415,7 +520,186 @@ export const tools = [
         'GET',
         `/api/figures/scenarios/${encodeURIComponent(updated.id)}`,
       );
-      return { app: app.name, changed: true, results };
+      return {
+        app: app.name,
+        changed: true,
+        costs: input.expenses?.length
+          ? describeScenarioExpenses(updated.additionalExpenses, cats)
+          : undefined,
+        results,
+      };
+    },
+  },
+  {
+    name: 'budget_planner_add_scenario',
+    description:
+      "Add a scenario to Budget Planner (a what-if, such as buying a property at a given price). Give copyFrom to start from an existing scenario, keeping its loan, costs and accounts, and change only what is given (often just the price and name). Without copyFrom, a loan scenario needs the price, deposit, rate and term; a general one needs none. Costs work as in budget_planner_update_scenario. The reply gives the new scenario's results.",
+    input: z.object({
+      name: z.string().trim().min(1).max(100),
+      copyFrom: z.string().min(1).max(100).optional().describe('An existing scenario to copy'),
+      type: z
+        .enum(['loan', 'general'])
+        .optional()
+        .describe('Without copyFrom: loan (the default) or general'),
+      purchasePrice: LOAN.purchasePrice.optional(),
+      deposit: LOAN.deposit.optional(),
+      interestRate: LOAN.interestRate.optional(),
+      termYears: LOAN.termYears.optional(),
+      repaymentFrequency: LOAN.repaymentFrequency.optional(),
+      targetDate: DATE.nullable().optional(),
+      keepAside: z.number().min(0).max(1e10).nullable().optional(),
+      expenses: z.array(SCENARIO_EXPENSE).max(30).optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const { scenarios, names } = await findScenario(conn, input.name);
+      if (names.some((n) => same(n, input.name))) {
+        return {
+          app: app.name,
+          added: false,
+          message: `There is already a scenario called "${input.name}". Change it with budget_planner_update_scenario, or use another name.`,
+        };
+      }
+      const loanChange = Object.fromEntries(
+        Object.keys(LOAN)
+          .filter((k) => input[k] !== undefined)
+          .map((k) => [k, input[k]]),
+      );
+      let body;
+      if (input.copyFrom) {
+        const source = scenarios.find((s) => same(s.name, input.copyFrom));
+        if (!source) {
+          return {
+            app: app.name,
+            added: false,
+            message: `No scenario called "${input.copyFrom}".`,
+            scenarios: names,
+          };
+        }
+        if (Object.keys(loanChange).length && !source.loanDetails) {
+          return {
+            app: app.name,
+            added: false,
+            message: `${source.name} has no loan to change; copy a loan scenario, or leave out copyFrom.`,
+          };
+        }
+        // The copy is the source's own fields, less its id, dates and archived state; the app
+        // keeps only the scenario fields it knows.
+        body = { ...JSON.parse(JSON.stringify(source)), name: input.name };
+        delete body.id;
+        delete body.createdAt;
+        delete body.archivedAt;
+        if (source.loanDetails) body.loanDetails = { ...source.loanDetails, ...loanChange };
+      } else {
+        const type = input.type ?? 'loan';
+        let loanDetails = null;
+        if (type === 'loan') {
+          const missing = ['purchasePrice', 'deposit', 'interestRate', 'termYears'].filter(
+            (k) => loanChange[k] === undefined,
+          );
+          if (missing.length) {
+            return {
+              app: app.name,
+              added: false,
+              message: `A loan scenario needs ${missing.join(', ')}; or give copyFrom to start from an existing one.`,
+            };
+          }
+          loanDetails = { repaymentFrequency: 'monthly', ...loanChange };
+        } else if (Object.keys(loanChange).length) {
+          return { app: app.name, added: false, message: 'A general scenario has no loan.' };
+        }
+        body = {
+          name: input.name,
+          type,
+          loanDetails,
+          removedExpenseIds: [],
+          removedIncomeIds: [],
+          additionalExpenses: [],
+        };
+      }
+      if (input.targetDate !== undefined) body.targetDate = input.targetDate;
+      if (input.keepAside !== undefined) body.keepAside = input.keepAside;
+      let cats = [];
+      if (input.expenses?.length) {
+        cats = await apiCall(conn, 'GET', '/api/categories');
+        const applied = applyScenarioExpenses(body.additionalExpenses, input.expenses, cats);
+        if (applied.error) {
+          return {
+            app: app.name,
+            added: false,
+            message: applied.error,
+            categories: applied.categories?.map((c) => c.name),
+          };
+        }
+        body.additionalExpenses = applied.list;
+      }
+      const created = await apiCall(conn, 'POST', '/api/scenarios', body);
+      const results = await apiCall(
+        conn,
+        'GET',
+        `/api/figures/scenarios/${encodeURIComponent(created.id)}`,
+      );
+      return {
+        app: app.name,
+        added: true,
+        copiedFrom: input.copyFrom,
+        results,
+      };
+    },
+  },
+  {
+    name: 'budget_planner_update_balances',
+    description:
+      "Set the balances of accounts in Budget Planner, by account name, in one go: bank accounts, savings, and what is owing on a credit card or loan (give the amount owed). asOf is the date the balances were true (default today), kept in each account's balance history. If a name does not match, nothing changes and the reply lists the accounts. Needs Budget Planner 2.3.0 or later.",
+    input: z.object({
+      balances: z
+        .array(
+          z.object({
+            account: z.string().min(1).max(100),
+            balance: z.number().min(-1e10).max(1e10),
+          }),
+        )
+        .min(1)
+        .max(50),
+      asOf: DATE.optional().describe('When these balances were true; defaults to today'),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      if (olderThan(conn.version, BALANCES_FROM)) {
+        return {
+          app: app.name,
+          changed: false,
+          message: `Updating balances needs Budget Planner ${BALANCES_FROM} or later (this Mac has ${conn.version ?? 'an older version'}). Reading still works.`,
+        };
+      }
+      const asOf = input.asOf ?? today();
+      if (asOf > today()) {
+        return { app: app.name, changed: false, message: 'asOf cannot be in the future.' };
+      }
+      const accounts = (await apiCall(conn, 'GET', '/api/accounts')).filter((a) => !a.closedAt);
+      const missing = input.balances.filter((b) => !accounts.some((a) => same(a.name, b.account)));
+      if (missing.length) {
+        return {
+          app: app.name,
+          changed: false,
+          message: `No open account called ${missing.map((m) => `"${m.account}"`).join(', ')}.`,
+          accounts: accounts.map((a) => ({ name: a.name, type: a.type })),
+        };
+      }
+      const entries = input.balances.map((b) => ({
+        id: accounts.find((a) => same(a.name, b.account)).id,
+        balance: b.balance,
+      }));
+      if (new Set(entries.map((e) => e.id)).size !== entries.length) {
+        return { app: app.name, changed: false, message: 'Each account may appear only once.' };
+      }
+      await apiCall(conn, 'PUT', '/api/accounts/balances', { balances: entries, asOf });
+      const figures = await apiCall(conn, 'GET', '/api/figures/accounts');
+      return { app: app.name, changed: true, asOf, ...figures };
     },
   },
 ];

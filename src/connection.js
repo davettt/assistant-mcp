@@ -110,6 +110,18 @@ export async function apiCall(conn, method, urlPath, body) {
   return data;
 }
 
+/** Whether an app version (from its token file) is below `min`; an unknown one counts as older. */
+export function olderThan(version, min) {
+  const a = String(version ?? '0')
+    .split('.')
+    .map(Number);
+  const b = min.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] || 0) !== b[i]) return (a[i] || 0) < b[i];
+  }
+  return false;
+}
+
 /** The result a tool returns when the app cannot be reached. */
 export function notAvailable(app, conn) {
   const reasons = {

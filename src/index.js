@@ -10,7 +10,7 @@ import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ApiError, IMAGES, isInstalled } from './connection.js';
+import { ApiError, IMAGES, appConnection, isInstalled, olderThan } from './connection.js';
 import { runCli } from './install.js';
 import { buildInstructions } from './instructions.js';
 import * as dueAgain from './apps/due-again.js';
@@ -109,6 +109,44 @@ server.registerTool(
       execFile('open', ['-a', entry.app.bundleName], (err) => (err ? reject(err) : resolve()));
     });
     return text({ app: entry.app.name, opened: true, note: 'Give it a few seconds to start.' });
+  },
+);
+
+server.registerTool(
+  'assistant_info',
+  {
+    title: 'About this assistant',
+    description:
+      'This Tiong Creative assistant server: its version, each app on this Mac with its version and whether it can be reached now, the tools each app has here, and anything that needs a newer app. Use it to check which version is connected or why a tool says an app needs updating.',
+    inputSchema: {},
+    annotations: { readOnlyHint: true },
+  },
+  async () => {
+    const apps = await Promise.all(
+      APPS.map(async (a) => {
+        const conn = await appConnection(a.app);
+        const known = conn.ok && conn.version;
+        return {
+          app: a.app.name,
+          available: conn.ok,
+          reason: conn.ok ? undefined : conn.reason,
+          version: conn.ok ? (conn.version ?? 'unknown') : undefined,
+          tools: a.tools.map((t) => t.name),
+          needsNewerApp: known
+            ? (a.needs ?? [])
+                .filter((n) => olderThan(conn.version, n.version))
+                .map((n) => `${n.for}: needs ${a.app.name} ${n.version}`)
+            : undefined,
+        };
+      }),
+    );
+    return text({
+      server: { name: 'tiongcreative-assistant', package: '@tiongcreative/assistant-mcp', version },
+      node: process.version,
+      apps,
+      notInstalled: MISSING,
+      note: 'A newer version of this server reaches the assistant when the AI app is restarted.',
+    });
   },
 );
 

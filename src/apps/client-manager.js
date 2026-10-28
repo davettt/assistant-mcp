@@ -66,11 +66,100 @@ function taskLine(t, jobs, byId, today) {
   };
 }
 
-function invoiceLine(i, byId, today) {
+// A recurring job's period runs from its startDate (moved on when a period is completed)
+// to the next cycle date. Mirrors client-manager/server/src/recurrence.js getNextCycleDate,
+// since /api/jobs does not return the period end, so keep the two in step.
+const CYCLE_DAYS = { weekly: 7, fortnightly: 14 };
+const CYCLE_MONTHS = {
+  monthly: 1,
+  quarterly: 3,
+  biannually: 6,
+  annually: 12,
+  '2-yearly': 24,
+  '3-yearly': 36,
+};
+
+function nextCycleDate(dateStr, recurrence) {
+  const d = new Date(dateStr + 'T00:00:00');
+  if (CYCLE_DAYS[recurrence]) {
+    d.setDate(d.getDate() + CYCLE_DAYS[recurrence]);
+  } else if (CYCLE_MONTHS[recurrence]) {
+    const day = d.getDate();
+    d.setMonth(d.getMonth() + CYCLE_MONTHS[recurrence]);
+    if (d.getDate() !== day) d.setDate(0);
+  } else {
+    return null;
+  }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function isRecurring(job) {
+  return !!(job?.startDate && nextCycleDate(job.startDate, job.recurrence));
+}
+
+/** The periods an invoice for this job can cover: past ones, the current one and the next. */
+function periodStarts(job) {
+  const past = (job.cycleHistory ?? []).map((e) => e.cycleStart).filter(Boolean);
+  return [...new Set([...past, job.startDate, nextCycleDate(job.startDate, job.recurrence)])];
+}
+
+function jobLine(j, invoices, today) {
+  const recurring = isRecurring(j);
+  const end = recurring ? nextCycleDate(j.startDate, j.recurrence) : null;
+  return {
+    id: j.id,
+    title: j.title,
+    status: j.status,
+    description: j.description || undefined,
+    location: j.location || undefined,
+    tags: j.tags?.length ? j.tags : undefined,
+    amount: j.amount,
+    amountStatus: j.amountStatus,
+    amountPaid: j.amountPaid || undefined,
+    startDate: j.startDate ?? undefined,
+    endDate: j.endDate || undefined,
+    ...(recurring
+      ? {
+          recurrence: j.recurrence,
+          billing: j.billingTiming === 'advance' ? 'in advance' : 'in arrears',
+          currentPeriod: { start: j.startDate, end },
+          nextRenewal: end,
+          daysUntilRenewal: daysBetween(today, end),
+          pastPeriods: (j.cycleHistory ?? []).slice(-3).map((e) => ({
+            start: e.cycleStart,
+            end: e.cycleEnd,
+            amount: e.amount,
+            amountStatus: e.amountStatus,
+            invoices: (e.invoiceNumbers ?? []).filter(Boolean),
+          })),
+        }
+      : {}),
+    invoices: invoices
+      .filter((i) => (i.jobIds ?? []).includes(j.id))
+      .map((i) => ({
+        number: i.invoiceNumber,
+        status: i.status,
+        total: i.totals?.total ?? null,
+        balance: i.totals?.balance ?? null,
+        period: periodOf(i, j),
+      })),
+  };
+}
+
+/** The period of this job an invoice covers, as start–end, or undefined. */
+function periodOf(invoice, job) {
+  const start = invoice.periods?.[job.id];
+  if (!start || !isRecurring(job)) return undefined;
+  return { start, end: nextCycleDate(start, job.recurrence) };
+}
+
+function invoiceLine(i, byId, today, jobsById) {
+  const jobs = jobsById ? (i.jobIds ?? []).map((id) => jobsById.get(id)).filter(Boolean) : [];
   return {
     id: i.id,
     number: i.invoiceNumber,
     type: i.docType,
+    source: i.source === 'external' ? 'external' : undefined,
     client: byId.get(i.clientId)?.name ?? null,
     status: i.status,
     issueDate: i.issueDate,
@@ -79,12 +168,16 @@ function invoiceLine(i, byId, today) {
     total: i.totals?.total ?? null,
     paid: i.totals?.amountPaid ?? null,
     balance: i.totals?.balance ?? null,
+    jobs: jobs.length
+      ? jobs.map((j) => ({ id: j.id, title: j.title, period: periodOf(i, j) }))
+      : undefined,
+    link: i.externalLink || undefined,
   };
 }
 
 /** This app's line in the server's instructions: which tool does which job. */
 export const instructions =
-  "Client Manager: clients, their jobs, tasks on jobs, reminders, invoices and an activity log. One client's details, jobs and job ids: client_manager_client. A call, meeting or email that happened: client_manager_log_activity. Complete or snooze a reminder: client_manager_update_reminder. Invoices can be read but not changed.";
+  "Client Manager: clients, their jobs, tasks on jobs, reminders, invoices and an activity log. One client's details, jobs and job ids: client_manager_client. A call, meeting or email that happened: client_manager_log_activity. Complete or snooze a reminder: client_manager_update_reminder. An invoice made in another system (Square, Xero), linked to a job and its renewal period: client_manager_add_invoice; existing invoices cannot be changed.";
 
 export const tools = [
   {
@@ -149,7 +242,7 @@ export const tools = [
   {
     name: 'client_manager_invoices',
     description:
-      'Invoices in Client Manager that still have money owing (unpaid, partly paid or overdue), with totals, what has been paid and the balance. Quotes and paid invoices are left out unless asked for.',
+      'Invoices in Client Manager that still have money owing (unpaid, partly paid or overdue), with totals, what has been paid, the balance, and the jobs (and period of a recurring job) each one covers. Quotes and paid invoices are left out unless asked for. To record an invoice made elsewhere (Square, Xero), use client_manager_add_invoice.',
     input: z.object({
       status: z
         .enum(['owing', 'overdue', 'paid', 'quotes', 'all'])
@@ -160,11 +253,14 @@ export const tools = [
     async run(input) {
       const conn = await appConnection(app);
       if (!conn.ok) return notAvailable(app, conn);
-      const { byId } = await clientsByIdAndName(conn);
+      const [{ byId }, jobs, invoices] = await Promise.all([
+        clientsByIdAndName(conn),
+        apiCall(conn, 'GET', '/api/jobs'),
+        apiCall(conn, 'GET', '/api/invoices?totals=1'),
+      ]);
+      const jobsById = new Map(jobs.map((j) => [j.id, j]));
       const today = todayLocal();
-      let list = (await apiCall(conn, 'GET', '/api/invoices?totals=1')).map((i) =>
-        invoiceLine(i, byId, today),
-      );
+      let list = invoices.map((i) => invoiceLine(i, byId, today, jobsById));
       const pick = {
         owing: (i) => i.type !== 'quote' && ['unpaid', 'partial', 'overdue'].includes(i.status),
         overdue: (i) => i.status === 'overdue',
@@ -191,7 +287,7 @@ export const tools = [
   {
     name: 'client_manager_client',
     description:
-      'One client in Client Manager by name: contact details, when they were last contacted, their jobs with status and amounts, and their open reminders. If the name does not match, the reply lists the clients.',
+      'One client in Client Manager by name: contact details, when they were last contacted, their open reminders, and each job in full: description, status, amount and what is paid, and for a recurring job (a renewal such as a domain or hosting) how often it renews, whether it is billed in advance or arrears, the current period, the next renewal and the last few periods, plus the invoices on the job and the period each covers. If the name does not match, the reply lists the clients.',
     input: z.object({ name: z.string().min(1).max(200) }),
     async run(input) {
       const conn = await appConnection(app);
@@ -199,9 +295,10 @@ export const tools = [
       const { clients, byId, find } = await clientsByIdAndName(conn);
       const client = find(input.name);
       if (!client) return { ...missingClient(input.name, clients), added: undefined };
-      const [jobs, reminders] = await Promise.all([
+      const [jobs, reminders, invoices] = await Promise.all([
         apiCall(conn, 'GET', `/api/jobs?clientId=${encodeURIComponent(client.id)}`),
         apiCall(conn, 'GET', `/api/reminders?clientId=${encodeURIComponent(client.id)}`),
+        apiCall(conn, 'GET', `/api/invoices?clientId=${encodeURIComponent(client.id)}&totals=1`),
       ]);
       const today = todayLocal();
       return {
@@ -216,14 +313,7 @@ export const tools = [
           tags: client.tags?.length ? client.tags : undefined,
           lastContactAt: client.lastContactAt ?? null,
         },
-        jobs: jobs.map((j) => ({
-          id: j.id,
-          title: j.title,
-          status: j.status,
-          amount: j.amount,
-          amountStatus: j.amountStatus,
-          startDate: j.startDate ?? undefined,
-        })),
+        jobs: jobs.map((j) => jobLine(j, invoices, today)),
         reminders: reminders
           .filter((r) => r.status !== 'completed')
           .map((r) => reminderLine(r, byId, today)),
@@ -556,6 +646,129 @@ export const tools = [
         app: app.name,
         changed: true,
         job: { id: job.id, title: job.title, status: job.status, amount: job.amount ?? null },
+      };
+    },
+  },
+  {
+    name: 'client_manager_add_invoice',
+    description:
+      "Record in Client Manager an invoice made in another system (Square, Xero, a PDF), with its own number and total, for a client by name. Link it to one of the client's jobs by title, and for a recurring job to the period it pays for (periodStart, the start date of that period; client_manager_client lists each job's periods). Set paidOn when it has been paid in full. Client Manager then updates the job's paid status. The reply reads the invoice back with its job and period. Invoices made in Client Manager itself are created in the app.",
+    input: z.object({
+      client: z.string().min(1).max(200),
+      number: z.string().trim().min(1).max(50).describe("The invoice's number in the other system"),
+      total: z.number().positive().max(1e9),
+      job: z.string().min(1).max(200).optional().describe('The job title'),
+      periodStart: date
+        .optional()
+        .describe(
+          "For a recurring job: the start of the period it pays for; defaults to the app's choice",
+        ),
+      issueDate: date.optional().describe('Defaults to today'),
+      dueDate: date.optional().describe('Defaults to the issue date'),
+      link: z.string().url().max(2000).optional().describe('Where the invoice can be seen'),
+      notes: z.string().max(2000).optional(),
+      paidOn: date.optional().describe('The day it was paid in full'),
+      paymentMethod: z.string().max(50).optional().describe('With paidOn, e.g. Square, card'),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const { clients, byId, find } = await clientsByIdAndName(conn);
+      const client = find(input.client);
+      if (!client) return missingClient(input.client, clients);
+      const [jobs, invoices] = await Promise.all([
+        apiCall(conn, 'GET', `/api/jobs?clientId=${encodeURIComponent(client.id)}`),
+        apiCall(conn, 'GET', '/api/invoices'),
+      ]);
+      let job;
+      if (input.job) {
+        const wanted = input.job.trim().toLowerCase();
+        job = jobs.find((j) => j.title.toLowerCase() === wanted);
+        if (!job) {
+          return {
+            app: app.name,
+            added: false,
+            message: `${client.name} has no job called "${input.job}". Choose one of these and try again.`,
+            jobs: jobs.map((j) => ({ title: j.title, status: j.status })),
+          };
+        }
+      }
+      if (input.periodStart) {
+        if (!job || !isRecurring(job)) {
+          return {
+            app: app.name,
+            added: false,
+            message: 'periodStart is for an invoice linked to a recurring job.',
+          };
+        }
+        const starts = periodStarts(job);
+        if (!starts.includes(input.periodStart)) {
+          return {
+            app: app.name,
+            added: false,
+            message: `${job.title} has no period starting ${input.periodStart}. Choose one of these.`,
+            periods: starts.map((start) => ({
+              start,
+              end: nextCycleDate(start, job.recurrence),
+            })),
+          };
+        }
+      }
+      const number = input.number.trim().toLowerCase();
+      if (
+        invoices.some(
+          (i) =>
+            String(i.invoiceNumber ?? '')
+              .trim()
+              .toLowerCase() === number,
+        )
+      ) {
+        return {
+          app: app.name,
+          added: false,
+          message: `Invoice ${input.number} is already in Client Manager; client_manager_invoices with status "all" shows it.`,
+        };
+      }
+      if (input.paidOn && input.paidOn > todayLocal()) {
+        return { app: app.name, added: false, message: 'paidOn cannot be in the future.' };
+      }
+      const issueDate = input.issueDate ?? todayLocal();
+      const created = await apiCall(conn, 'POST', '/api/invoices', {
+        source: 'external',
+        docType: 'invoice',
+        invoiceNumber: input.number,
+        clientId: client.id,
+        jobIds: job ? [job.id] : [],
+        externalTotal: input.total,
+        issueDate,
+        dueDate: input.dueDate ?? issueDate,
+        ...(input.periodStart ? { periods: { [job.id]: input.periodStart } } : {}),
+        ...(input.link ? { externalLink: input.link } : {}),
+        ...(input.notes ? { notes: input.notes } : {}),
+      });
+      if (input.paidOn) {
+        await apiCall(conn, 'POST', `/api/invoices/${encodeURIComponent(created.id)}/payment`, {
+          amount: input.total,
+          date: input.paidOn,
+          ...(input.paymentMethod ? { method: input.paymentMethod } : {}),
+        });
+      }
+      // Read it back as stored, with the totals and job status the app worked out.
+      const [stored, allJobs] = await Promise.all([
+        apiCall(conn, 'GET', `/api/invoices?clientId=${encodeURIComponent(client.id)}&totals=1`),
+        apiCall(conn, 'GET', '/api/jobs'),
+      ]);
+      const jobsById = new Map(allJobs.map((j) => [j.id, j]));
+      const invoice = stored.find((i) => i.id === created.id);
+      const linked = job ? jobsById.get(job.id) : null;
+      return {
+        app: app.name,
+        added: true,
+        invoice: invoiceLine(invoice, byId, todayLocal(), jobsById),
+        job: linked
+          ? { title: linked.title, amountStatus: linked.amountStatus ?? null }
+          : undefined,
       };
     },
   },

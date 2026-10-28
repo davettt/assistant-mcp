@@ -2,7 +2,7 @@
 // Talks to the app's local API with the per-launch token it writes while
 // "Allow assistant access" is on (gift-keeper/server/assistant.js).
 import { z } from 'zod';
-import { appConnection, apiCall, notAvailable } from '../connection.js';
+import { appConnection, apiCall, notAvailable, olderThan } from '../connection.js';
 import { todayLocal } from '../dates.js';
 
 export const app = {
@@ -21,16 +21,10 @@ const START_YEAR_TYPES = ['birthday', 'anniversary', 'wedding'];
 const BIRTHDAY_MILESTONES = [18, 21, 30, 40, 50, 60, 70, 80, 90, 100];
 const ANNIVERSARY_MILESTONES = [1, 10, 25, 40, 50, 60];
 
-function olderThan(version, min) {
-  const a = String(version ?? '0')
-    .split('.')
-    .map(Number);
-  const b = min.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if ((a[i] || 0) !== b[i]) return (a[i] || 0) < b[i];
-  }
-  return false;
-}
+/** What needs a newer app than some have, for assistant_info. */
+export const needs = [
+  { version: START_YEAR_FROM, for: 'Start years and milestones, and changing gift ideas' },
+];
 
 /** The app's version must support the change; returns a message to send back, or null. */
 function needsUpdate(conn, what) {

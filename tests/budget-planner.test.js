@@ -108,6 +108,8 @@ describe(
         'budget_planner_add_expense',
         'budget_planner_update_expense',
         'budget_planner_update_scenario',
+        'budget_planner_add_scenario',
+        'budget_planner_update_balances',
       ]) {
         assert.equal(hint(n), false, `${n} writes`);
       }
@@ -236,6 +238,102 @@ describe(
       assert.equal(noLoan.changed, false);
       const miss = await call('budget_planner_scenarios', { names: ['Beach house'] });
       assert.equal(miss.found, false);
+    });
+
+    it('copies a scenario at a new price and edits its own costs', async () => {
+      const cats = await send('GET', '/api/categories');
+      const strata = await call('budget_planner_update_scenario', {
+        scenario: 'Flat',
+        expenses: [
+          { name: 'Strata', amount: 1200, frequency: 'quarterly', category: cats[0].name },
+          { name: 'Stamp duty', amount: 25000, frequency: 'one-off', category: cats[0].name },
+        ],
+      });
+      assert.equal(strata.changed, true, JSON.stringify(strata));
+      assert.equal(strata.costs.length, 2);
+      assert.equal(strata.costs[1].category, undefined, 'a one-off cost has no category');
+
+      const copy = await call('budget_planner_add_scenario', {
+        name: 'Flat 590k',
+        copyFrom: 'flat',
+        purchasePrice: 590000,
+        expenses: [
+          { name: 'strata', amount: 1100 },
+          { name: 'Water', amount: 300, frequency: 'quarterly' },
+        ],
+      });
+      assert.equal(copy.added, true, JSON.stringify(copy));
+      assert.equal(copy.results.loan.principal, 460000, 'the copied deposit stays');
+      assert.equal(copy.results.loan.interestRate, 5.89, 'the copied rate stays');
+      const stored = (await send('GET', '/api/scenarios')).find((s) => s.name === 'Flat 590k');
+      assert.deepEqual(
+        stored.additionalExpenses.map((e) => [e.name, e.amount]),
+        [
+          ['Strata', 1100],
+          ['Stamp duty', 25000],
+          ['Water', 300],
+        ],
+      );
+      const original = (await send('GET', '/api/scenarios')).find((s) => s.name === 'Flat');
+      assert.equal(original.additionalExpenses[0].amount, 1200, 'the source is unchanged');
+
+      const removed = await call('budget_planner_update_scenario', {
+        scenario: 'Flat 590k',
+        expenses: [
+          { name: 'Stamp duty', remove: true },
+          { name: 'Water', rename: 'Water rates' },
+        ],
+      });
+      assert.deepEqual(
+        removed.costs.map((c) => c.name),
+        ['Strata', 'Water rates'],
+      );
+
+      const dup = await call('budget_planner_add_scenario', { name: 'flat', copyFrom: 'Flat' });
+      assert.equal(dup.added, false);
+      const bare = await call('budget_planner_add_scenario', { name: 'House', purchasePrice: 1e6 });
+      assert.equal(bare.added, false);
+      assert.match(bare.message, /deposit/);
+      const newCost = await call('budget_planner_update_scenario', {
+        scenario: 'Flat',
+        expenses: [{ name: 'Insurance' }],
+      });
+      assert.equal(newCost.changed, false, 'a new cost needs an amount and a frequency');
+      const general = await call('budget_planner_add_scenario', {
+        name: 'Gap year',
+        type: 'general',
+        expenses: [{ name: 'Travel', amount: 15000, frequency: 'one-off' }],
+      });
+      assert.equal(general.added, true, JSON.stringify(general));
+      assert.equal(general.results.loan, null);
+    });
+
+    it('sets balances on Budget Planner 2.3.0, and says what is needed before', async () => {
+      const account = await send('POST', '/api/accounts', {
+        name: 'Everyday',
+        type: 'transaction',
+        balance: 1000,
+      });
+      const { version } = JSON.parse(
+        fs.readFileSync(path.join(BUDGET_PLANNER, 'package.json'), 'utf8'),
+      );
+      const [major, minor] = version.split('.').map(Number);
+      const result = await call('budget_planner_update_balances', {
+        balances: [{ account: 'everyday', balance: 2345.67 }],
+      });
+      if (major < 2 || (major === 2 && minor < 3)) {
+        assert.equal(result.changed, false);
+        assert.match(result.message, /2\.3\.0/);
+        return;
+      }
+      assert.equal(result.changed, true, JSON.stringify(result));
+      const stored = (await send('GET', '/api/accounts')).find((a) => a.id === account.id);
+      assert.equal(stored.balance, 2345.67);
+      const miss = await call('budget_planner_update_balances', {
+        balances: [{ account: 'Nowhere', balance: 1 }],
+      });
+      assert.equal(miss.changed, false);
+      assert.ok(miss.accounts.some((a) => a.name === 'Everyday'));
     });
   },
 );

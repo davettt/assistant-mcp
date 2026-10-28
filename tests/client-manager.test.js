@@ -340,5 +340,87 @@ describe(
       const activities = await (await fetch(`${base}/api/activities`)).json();
       assert.equal(activities.length, 1);
     });
+
+    it('records an outside invoice against a renewal period and reads it back', async () => {
+      const andre = await post('/api/clients', { name: 'Andre' });
+      await post('/api/jobs', {
+        clientId: andre.id,
+        title: 'example.com.au domain',
+        description: 'Domain renewal, 10% discount',
+        status: 'active',
+        amount: 52,
+        recurrence: '2-yearly',
+        billingTiming: 'advance',
+        startDate: '2026-11-26',
+      });
+      const call = async (name, args) => parse(await client.callTool({ name, arguments: args }));
+
+      const before = await call('client_manager_client', { name: 'andre' });
+      const job = before.jobs[0];
+      assert.equal(job.description, 'Domain renewal, 10% discount');
+      assert.equal(job.recurrence, '2-yearly');
+      assert.equal(job.billing, 'in advance');
+      assert.deepEqual(job.currentPeriod, { start: '2026-11-26', end: '2028-11-26' });
+      assert.equal(job.nextRenewal, '2028-11-26');
+
+      const badPeriod = await call('client_manager_add_invoice', {
+        client: 'Andre',
+        number: '000044',
+        total: 52,
+        job: 'example.com.au domain',
+        periodStart: '2026-12-01',
+      });
+      assert.equal(badPeriod.added, false);
+      assert.deepEqual(badPeriod.periods[0], { start: '2026-11-26', end: '2028-11-26' });
+
+      const today = key(new Date());
+      const added = await call('client_manager_add_invoice', {
+        client: 'Andre',
+        number: '000044',
+        total: 52,
+        job: 'EXAMPLE.COM.AU DOMAIN',
+        periodStart: '2026-11-26',
+        paidOn: today,
+        paymentMethod: 'Square',
+        link: 'https://squareup.com/invoices/000044',
+      });
+      assert.equal(added.added, true, JSON.stringify(added));
+      assert.equal(added.invoice.number, '000044');
+      assert.equal(added.invoice.source, 'external');
+      assert.equal(added.invoice.total, 52);
+      assert.equal(added.invoice.status, 'paid');
+      assert.deepEqual(added.invoice.jobs[0].period, { start: '2026-11-26', end: '2028-11-26' });
+
+      const again = await call('client_manager_add_invoice', {
+        client: 'Andre',
+        number: '000044',
+        total: 52,
+      });
+      assert.equal(again.added, false, 'the same number is not recorded twice');
+
+      const after = await call('client_manager_client', { name: 'Andre' });
+      assert.deepEqual(after.jobs[0].invoices, [
+        {
+          number: '000044',
+          status: 'paid',
+          total: 52,
+          balance: 0,
+          period: { start: '2026-11-26', end: '2028-11-26' },
+        },
+      ]);
+      const listed = await call('client_manager_invoices', { status: 'paid', client: 'andre' });
+      assert.equal(listed.invoices[0].jobs[0].title, 'example.com.au domain');
+    });
+
+    it('says which server and app versions are connected', async () => {
+      const info = parse(await client.callTool({ name: 'assistant_info', arguments: {} }));
+      const { version } = JSON.parse(
+        fs.readFileSync(path.join(here, '..', 'package.json'), 'utf8'),
+      );
+      assert.equal(info.server.version, version);
+      const cm = info.apps.find((a) => a.app === 'Client Manager');
+      assert.equal(cm.available, true);
+      assert.ok(cm.tools.includes('client_manager_add_invoice'));
+    });
   },
 );

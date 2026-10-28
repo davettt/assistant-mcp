@@ -7,7 +7,7 @@
 
 const COMMON = [
   "Tools for the Tiong Creative apps on this Mac. Each app's tools start with its name; before telling the user something cannot be done, check all of that app's tools, not only the closest match.",
-  'Start with whats_on for anything coming up across the apps.',
+  "Start with whats_on for anything coming up across the apps. assistant_info gives this server's version and each app's version.",
   'An app that is closed or has assistant access turned off is reported as unavailable: tell the user, and call open_app only after they agree.',
   'Nothing here deletes. Names (lists, notes, people, clients, categories) match ignoring case; when one does not match, the reply lists what exists, so pick from it or ask the user.',
 ];
