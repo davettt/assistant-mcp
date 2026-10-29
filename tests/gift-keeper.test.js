@@ -382,5 +382,87 @@ describe(
       );
       assert.equal(nothing.changed, false);
     });
+
+    it('promotes an idea to a tracked gift for an occasion', async () => {
+      const people = await (await fetch(`${base}/api/people`)).json();
+      const alice = people.find((p) => p.name === 'Alice');
+      await post('/api/occasions', {
+        name: 'Housewarming',
+        date: '2026-12-05',
+        personIds: [alice.id],
+      });
+      const idea = await post('/api/ideas', { name: 'Olive tree' });
+      const call = (args) =>
+        client
+          .callTool({ name: 'gift_keeper_promote_idea', arguments: { ideaId: idea.id, ...args } })
+          .then(parse);
+      const noOccasion = await call({ occasion: 'House party' });
+      assert.equal(noOccasion.promoted, false);
+      assert.ok(noOccasion.occasions.some((o) => o.name === 'Housewarming'));
+      const noPerson = await call({ occasion: 'housewarming' });
+      assert.equal(noPerson.promoted, false, 'an unassigned idea needs a person');
+      const out = await call({ occasion: 'housewarming', person: 'alice' });
+      assert.equal(out.promoted, true);
+      assert.equal(out.gift.occasion, 'Housewarming');
+      assert.equal(out.gift.person, 'Alice');
+      assert.equal(out.gift.status, 'idea');
+      assert.equal(out.note, undefined);
+      const again = await call({ occasion: 'Housewarming', person: 'Alice' });
+      assert.equal(again.promoted, false, 'an idea is promoted once');
+      const ideas = parse(
+        await client.callTool({ name: 'gift_keeper_ideas', arguments: { search: 'olive' } }),
+      );
+      assert.equal(ideas.ideas[0].promoted, true);
+      const gifts = parse(
+        await client.callTool({ name: 'gift_keeper_gifts', arguments: { person: 'Alice' } }),
+      );
+      assert.ok(gifts.gifts.some((g) => g.name === 'Olive tree' && g.occasion === 'Housewarming'));
+    });
+
+    it('adds a store and sets it on ideas, promoted gifts and gifts', async () => {
+      const tool = (name, args) => client.callTool({ name, arguments: args }).then(parse);
+      assert.equal((await tool('gift_keeper_add_store', { name: 'TK Maxx' })).added, true);
+      const dup = await tool('gift_keeper_add_store', { name: 'tk maxx' });
+      assert.equal(dup.added, false, 'store names are matched ignoring case');
+      const miss = await tool('gift_keeper_add_idea', {
+        idea: 'Throw rug',
+        person: 'Alice',
+        store: 'Nowhere',
+      });
+      assert.equal(miss.added, false);
+      assert.ok(miss.stores.includes('TK Maxx'));
+      const added = await tool('gift_keeper_add_idea', {
+        idea: 'Throw rug',
+        person: 'Alice',
+        store: 'tk maxx',
+      });
+      assert.equal(added.idea.store, 'TK Maxx');
+      const listed = await tool('gift_keeper_ideas', { search: 'rug' });
+      assert.equal(listed.ideas[0].store, 'TK Maxx');
+      const cleared = await tool('gift_keeper_update_idea', { ideaId: added.idea.id, store: null });
+      assert.equal(cleared.idea.store, undefined);
+      const stored = (await (await fetch(`${base}/api/ideas`)).json()).find(
+        (i) => i.id === added.idea.id,
+      );
+      assert.ok(!('storeId' in stored), 'null clears the store');
+      await tool('gift_keeper_update_idea', { ideaId: added.idea.id, store: 'TK Maxx' });
+      const promoted = await tool('gift_keeper_promote_idea', {
+        ideaId: added.idea.id,
+        occasion: 'Housewarming',
+      });
+      assert.equal(promoted.gift.store, 'TK Maxx', "the gift takes the idea's store");
+      const olive = (await tool('gift_keeper_gifts', { person: 'Alice' })).gifts.find(
+        (g) => g.name === 'Olive tree',
+      );
+      assert.equal(olive.store, undefined);
+      const set = await tool('gift_keeper_update_gift', { giftId: olive.id, store: 'TK Maxx' });
+      assert.equal(set.gift.store, 'TK Maxx');
+      const after = (await tool('gift_keeper_gifts', { person: 'Alice' })).gifts.find(
+        (g) => g.id === olive.id,
+      );
+      assert.equal(after.store, 'TK Maxx');
+      const unset = await tool('gift_keeper_update_gift', { giftId: olive.id, store: null });
+      assert.equal(unset.gift.store, null);
+    });
   },
 );

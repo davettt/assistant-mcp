@@ -15,6 +15,9 @@ export const app = {
 // Gift Keeper 1.4.0 added the start year (year born, year married) and editing ideas with
 // null to clear a field. Older apps would drop startYear without saying so.
 const START_YEAR_FROM = '1.4.0';
+// Gift Keeper 1.5.0 added a store on ideas (and promote carries it to the gift). Older apps
+// drop storeId on an idea without saying so; gifts have had a store all along.
+const IDEA_STORE_FROM = '1.5.0';
 const START_YEAR_TYPES = ['birthday', 'anniversary', 'wedding'];
 // Mirrors gift-keeper/server/data.js isMilestoneYear (its /api/upcoming does not return the
 // flag), so keep the two lists in step.
@@ -24,12 +27,13 @@ const ANNIVERSARY_MILESTONES = [1, 10, 25, 40, 50, 60];
 /** What needs a newer app than some have, for assistant_info. */
 export const needs = [
   { version: START_YEAR_FROM, for: 'Start years and milestones, and changing gift ideas' },
+  { version: IDEA_STORE_FROM, for: 'A store on gift ideas' },
 ];
 
 /** The app's version must support the change; returns a message to send back, or null. */
-function needsUpdate(conn, what) {
-  if (!olderThan(conn.version, START_YEAR_FROM)) return null;
-  return `${what} needs Gift Keeper ${START_YEAR_FROM} or later (this Mac has ${conn.version ?? 'an older version'}).`;
+function needsUpdate(conn, what, from = START_YEAR_FROM) {
+  if (!olderThan(conn.version, from)) return null;
+  return `${what} needs Gift Keeper ${from} or later (this Mac has ${conn.version ?? 'an older version'}).`;
 }
 
 /** How many years this occasion marks (age turning, years married), and whether it is a milestone. */
@@ -84,9 +88,23 @@ async function findPerson(conn, name) {
   };
 }
 
+/** A store by name (ignoring case); on a miss, the reply to send back, listing the stores. */
+async function findStore(conn, name) {
+  const stores = await apiCall(conn, 'GET', '/api/stores');
+  const wanted = name.trim().toLowerCase();
+  const store = stores.find((s) => s.name.toLowerCase() === wanted);
+  if (store) return { store };
+  return {
+    miss: {
+      message: `No store called "${name}" in Gift Keeper. Pick one of these, or add it with gift_keeper_add_store.`,
+      stores: stores.map((s) => s.name),
+    },
+  };
+}
+
 /** This app's line in the server's instructions: which tool does which job. */
 export const instructions =
-  'Gift Keeper: people, occasions, gift ideas and the gifts being tracked. Ideas not yet tied to an occasion are in gift_keeper_ideas (change one: gift_keeper_update_idea); tracked gifts are in gift_keeper_gifts. Move a gift along (ordered, bought, wrapped): gift_keeper_update_gift, or gift_keeper_mark_gift_given. An occasion finished for this year: gift_keeper_complete_occasion.';
+  'Gift Keeper: people, occasions, gift ideas and the gifts being tracked. Ideas not yet tied to an occasion are in gift_keeper_ideas (change one: gift_keeper_update_idea; turn one into a tracked gift for an occasion: gift_keeper_promote_idea); tracked gifts are in gift_keeper_gifts. Move a gift along (ordered, bought, wrapped): gift_keeper_update_gift, or gift_keeper_mark_gift_given. Ideas and gifts take a store by name; a store not yet there: gift_keeper_add_store. An occasion finished for this year: gift_keeper_complete_occasion.';
 
 export const tools = [
   {
@@ -136,7 +154,7 @@ export const tools = [
   {
     name: 'gift_keeper_ideas',
     description:
-      "Gift ideas saved in Gift Keeper: the pool of possible gifts, including ones not yet tied to an occasion. Filter by person's name or search the idea text. This is where to look before suggesting something new. Change an idea with gift_keeper_update_idea and its id from here.",
+      "Gift ideas saved in Gift Keeper: the pool of possible gifts, including ones not yet tied to an occasion. Filter by person's name or search the idea text. This is where to look before suggesting something new. Change an idea with gift_keeper_update_idea, or make it a tracked gift for an occasion with gift_keeper_promote_idea, using its id from here.",
     input: z.object({
       person: z.string().max(100).optional(),
       search: z.string().max(100).optional(),
@@ -144,13 +162,15 @@ export const tools = [
     async run(input) {
       const conn = await appConnection(app);
       if (!conn.ok) return notAvailable(app, conn);
-      const [ideas, people, occasions] = await Promise.all([
+      const [ideas, people, occasions, stores] = await Promise.all([
         apiCall(conn, 'GET', '/api/ideas'),
         apiCall(conn, 'GET', '/api/people'),
         apiCall(conn, 'GET', '/api/occasions'),
+        apiCall(conn, 'GET', '/api/stores'),
       ]);
       const personName = new Map(people.map((p) => [p.id, p.name]));
       const occasionName = new Map(occasions.map((o) => [o.id, o.name]));
+      const storeName = new Map(stores.map((s) => [s.id, s.name]));
       let list = ideas.map((i) => ({
         id: i.id,
         idea: i.name,
@@ -159,8 +179,10 @@ export const tools = [
         price: i.price ?? null,
         priority: i.priority ?? 'normal',
         url: i.url || undefined,
+        store: i.storeId ? storeName.get(i.storeId) : undefined,
         notes: i.notes || undefined,
         added: i.dateAdded ?? null,
+        promoted: i.promotedToGiftId ? true : undefined,
       }));
       if (input.person) {
         const who = input.person.toLowerCase();
@@ -178,7 +200,7 @@ export const tools = [
   {
     name: 'gift_keeper_gifts',
     description:
-      'Gifts being tracked in Gift Keeper at any stage (idea, shortlisted, ordered, bought, arrived, wrapped, given, cancelled), with who and which occasion each is for. Filter by person or status. Given and cancelled gifts are left out unless asked for.',
+      'Gifts being tracked in Gift Keeper at any stage (idea, shortlisted, ordered, bought, arrived, wrapped, given, cancelled), with who and which occasion each is for and the store it is from. Filter by person or status. Given and cancelled gifts are left out unless asked for.',
     input: z.object({
       person: z.string().max(100).optional(),
       status: z
@@ -200,13 +222,15 @@ export const tools = [
     async run(input) {
       const conn = await appConnection(app);
       if (!conn.ok) return notAvailable(app, conn);
-      const [gifts, people, occasions] = await Promise.all([
+      const [gifts, people, occasions, stores] = await Promise.all([
         apiCall(conn, 'GET', '/api/gifts'),
         apiCall(conn, 'GET', '/api/people'),
         apiCall(conn, 'GET', '/api/occasions'),
+        apiCall(conn, 'GET', '/api/stores'),
       ]);
       const personName = new Map(people.map((p) => [p.id, p.name]));
       const occasionName = new Map(occasions.map((o) => [o.id, o.name]));
+      const storeName = new Map(stores.map((s) => [s.id, s.name]));
       let list = gifts.map((g) => ({
         id: g.id,
         name: g.name,
@@ -215,6 +239,7 @@ export const tools = [
         occasion: g.occasionId ? (occasionName.get(g.occasionId) ?? null) : null,
         price: g.price ?? null,
         plannedDate: g.plannedDate ?? null,
+        store: g.storeId ? storeName.get(g.storeId) : undefined,
         notes: g.notes || undefined,
       }));
       if (input.status === 'open')
@@ -230,7 +255,7 @@ export const tools = [
   {
     name: 'gift_keeper_add_idea',
     description:
-      'Save a gift idea in Gift Keeper for a person, by name. If the name does not match, the reply lists the people to choose from. Optional link, price, notes and priority.',
+      'Save a gift idea in Gift Keeper for a person, by name. If the name does not match, the reply lists the people to choose from. Optional link, price, notes, priority and store (by name; put the shop here, not in the idea name; a new one is added with gift_keeper_add_store).',
     input: z.object({
       idea: z.string().trim().min(1).max(200),
       person: z.string().min(1).max(100),
@@ -238,11 +263,20 @@ export const tools = [
       price: z.number().min(0).optional(),
       notes: z.string().max(2000).optional(),
       priority: z.enum(['low', 'normal', 'high']).optional(),
+      store: z.string().min(1).max(200).optional(),
     }),
     write: true,
     async run(input) {
       const conn = await appConnection(app);
       if (!conn.ok) return notAvailable(app, conn);
+      let store;
+      if (input.store) {
+        const old = needsUpdate(conn, 'A store on an idea', IDEA_STORE_FROM);
+        if (old) return { app: app.name, added: false, message: old };
+        const found = await findStore(conn, input.store);
+        if (found.miss) return { app: app.name, added: false, ...found.miss };
+        store = found.store;
+      }
       const { person, names } = await findPerson(conn, input.person);
       if (!person) {
         return {
@@ -259,19 +293,26 @@ export const tools = [
         ...(input.price !== undefined ? { price: input.price } : {}),
         ...(input.notes ? { notes: input.notes } : {}),
         ...(input.priority ? { priority: input.priority } : {}),
+        ...(store ? { storeId: store.id } : {}),
       };
       const idea = await apiCall(conn, 'POST', '/api/ideas', body);
       return {
         app: app.name,
         added: true,
-        idea: { id: idea.id, name: idea.name, person: person.name, priority: idea.priority },
+        idea: {
+          id: idea.id,
+          name: idea.name,
+          person: person.name,
+          priority: idea.priority,
+          store: store?.name,
+        },
       };
     },
   },
   {
     name: 'gift_keeper_update_idea',
     description:
-      'Change a gift idea in Gift Keeper: its name, who it is for (by name, or null to leave it unassigned), notes, price, link or priority. null clears notes, price or link. Use an idea id from gift_keeper_ideas. If the person does not match, the reply lists the people.',
+      'Change a gift idea in Gift Keeper: its name, who it is for (by name, or null to leave it unassigned), notes, price, link, priority or store (by name). null clears notes, price, link or store. Use an idea id from gift_keeper_ideas. If the person does not match, the reply lists the people. To tie it to an occasion as a tracked gift, use gift_keeper_promote_idea.',
     input: z.object({
       ideaId: z.string().min(1),
       idea: z.string().trim().min(1).max(200).optional().describe('New name'),
@@ -280,6 +321,7 @@ export const tools = [
       price: z.number().min(0).nullable().optional(),
       url: z.string().url().max(2000).nullable().optional(),
       priority: z.enum(['low', 'normal', 'high']).optional(),
+      store: z.string().min(1).max(200).nullable().optional(),
     }),
     write: true,
     async run(input) {
@@ -287,8 +329,18 @@ export const tools = [
       if (!conn.ok) return notAvailable(app, conn);
       const old = needsUpdate(conn, 'Changing ideas');
       if (old) return { app: app.name, changed: false, message: old };
-      const { ideaId, idea, person, ...rest } = input;
+      const { ideaId, idea, person, store, ...rest } = input;
       const body = { ...rest };
+      if (store !== undefined) {
+        const tooOld = needsUpdate(conn, 'A store on an idea', IDEA_STORE_FROM);
+        if (tooOld) return { app: app.name, changed: false, message: tooOld };
+        if (store === null) body.storeId = null;
+        else {
+          const found = await findStore(conn, store);
+          if (found.miss) return { app: app.name, changed: false, ...found.miss };
+          body.storeId = found.store.id;
+        }
+      }
       if (idea !== undefined) body.name = idea;
       if (person === null) body.personId = null;
       else if (person !== undefined) {
@@ -306,11 +358,14 @@ export const tools = [
         return {
           app: app.name,
           changed: false,
-          message: 'Nothing to change: give a name, person, notes, price, link or priority.',
+          message: 'Nothing to change: give a name, person, notes, price, link, priority or store.',
         };
       }
       const updated = await apiCall(conn, 'PUT', `/api/ideas/${encodeURIComponent(ideaId)}`, body);
-      const people = await apiCall(conn, 'GET', '/api/people');
+      const [people, stores] = await Promise.all([
+        apiCall(conn, 'GET', '/api/people'),
+        apiCall(conn, 'GET', '/api/stores'),
+      ]);
       return {
         app: app.name,
         changed: true,
@@ -321,8 +376,121 @@ export const tools = [
           price: updated.price ?? null,
           priority: updated.priority ?? 'normal',
           url: updated.url || undefined,
+          store: stores.find((s) => s.id === updated.storeId)?.name,
           notes: updated.notes || undefined,
         },
+      };
+    },
+  },
+  {
+    name: 'gift_keeper_promote_idea',
+    description:
+      "Turn a gift idea into a tracked gift for an occasion in Gift Keeper, as the app's Promote button does: the gift starts at status idea and the idea is marked promoted. Use an idea id from gift_keeper_ideas and the occasion by name or id (gift_keeper_upcoming lists them). The gift is for the idea's person unless another person is named, and from the idea's store unless another store is named. keepIdea leaves the idea in the pool for another occasion. Move the gift along afterwards with gift_keeper_update_gift.",
+    input: z.object({
+      ideaId: z.string().min(1),
+      occasion: z.string().trim().min(1).max(200).describe('Occasion name or id'),
+      person: z.string().min(1).max(100).optional(),
+      store: z.string().min(1).max(200).optional(),
+      keepIdea: z.boolean().optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const [ideas, occasions, people] = await Promise.all([
+        apiCall(conn, 'GET', '/api/ideas'),
+        apiCall(conn, 'GET', '/api/occasions'),
+        apiCall(conn, 'GET', '/api/people'),
+      ]);
+      const idea = ideas.find((i) => i.id === input.ideaId);
+      if (!idea) {
+        return {
+          app: app.name,
+          promoted: false,
+          message: `No idea with id "${input.ideaId}". gift_keeper_ideas lists them.`,
+        };
+      }
+      if (idea.promotedToGiftId) {
+        return {
+          app: app.name,
+          promoted: false,
+          message: `"${idea.name}" is already a tracked gift; gift_keeper_gifts shows it.`,
+        };
+      }
+      const wanted = input.occasion.toLowerCase();
+      const byId = occasions.find((o) => o.id === input.occasion);
+      const named = byId ? [byId] : occasions.filter((o) => o.name.toLowerCase() === wanted);
+      if (named.length !== 1) {
+        return {
+          app: app.name,
+          promoted: false,
+          message: named.length
+            ? `More than one occasion is called "${input.occasion}". Give its id instead.`
+            : `No occasion called "${input.occasion}". Choose one of these and try again.`,
+          occasions: (named.length ? named : occasions).map((o) => ({
+            id: o.id,
+            name: o.name,
+            date: o.date,
+          })),
+        };
+      }
+      const occasion = named[0];
+      let personId = idea.personId;
+      if (input.person) {
+        const who = input.person.trim().toLowerCase();
+        const found = people.find((p) => p.name.toLowerCase() === who);
+        if (!found) {
+          return {
+            app: app.name,
+            promoted: false,
+            message: `No one called "${input.person}" in Gift Keeper.`,
+            people: people.map((p) => p.name),
+          };
+        }
+        personId = found.id;
+      }
+      if (!personId) {
+        return {
+          app: app.name,
+          promoted: false,
+          message: `"${idea.name}" is not for anyone yet. Say who it is for.`,
+          people: people.map((p) => p.name),
+        };
+      }
+      // Checked before the promote so a wrong store name changes nothing. Gift Keeper 1.5.0
+      // takes storeId on the promote; older versions get it set on the new gift afterwards.
+      const found = input.store ? await findStore(conn, input.store) : null;
+      if (found?.miss) return { app: app.name, promoted: false, ...found.miss };
+      const takesStore = !olderThan(conn.version, IDEA_STORE_FROM);
+      let gift = await apiCall(conn, 'POST', `/api/ideas/${encodeURIComponent(idea.id)}/promote`, {
+        personId,
+        occasionId: occasion.id,
+        keepIdea: input.keepIdea === true,
+        ...(found && takesStore ? { storeId: found.store.id } : {}),
+      });
+      if (found && !takesStore) {
+        gift = await apiCall(conn, 'PUT', `/api/gifts/${encodeURIComponent(gift.id)}`, {
+          storeId: found.store.id,
+        });
+      }
+      const stores = await apiCall(conn, 'GET', '/api/stores');
+      const person = people.find((p) => p.id === personId)?.name ?? null;
+      return {
+        app: app.name,
+        promoted: true,
+        keptIdea: input.keepIdea === true,
+        gift: {
+          id: gift.id,
+          name: gift.name,
+          person,
+          occasion: occasion.name,
+          status: gift.status,
+          price: gift.price ?? null,
+          store: stores.find((s) => s.id === gift.storeId)?.name,
+        },
+        note: occasion.personIds?.includes(personId)
+          ? undefined
+          : `${person} is not one of the people on ${occasion.name}.`,
       };
     },
   },
@@ -349,7 +517,7 @@ export const tools = [
   {
     name: 'gift_keeper_update_gift',
     description:
-      'Change a gift in Gift Keeper: its status (idea, shortlisted, ordered, bought, arrived, wrapped, given, cancelled), price, name or notes. Use a gift id from gift_keeper_upcoming.',
+      'Change a gift in Gift Keeper: its status (idea, shortlisted, ordered, bought, arrived, wrapped, given, cancelled), price, name, notes or store (by name, null to clear; a new store is added with gift_keeper_add_store). Use a gift id from gift_keeper_upcoming or gift_keeper_gifts.',
     input: z.object({
       giftId: z.string().min(1),
       status: z
@@ -367,25 +535,68 @@ export const tools = [
       price: z.number().min(0).nullable().optional(),
       name: z.string().trim().min(1).max(200).optional(),
       notes: z.string().max(2000).optional(),
+      store: z.string().min(1).max(200).nullable().optional(),
     }),
     write: true,
     async run(input) {
       const conn = await appConnection(app);
       if (!conn.ok) return notAvailable(app, conn);
-      const { giftId, ...changes } = input;
+      const { giftId, store, ...changes } = input;
+      let storeName = null;
+      if (store === null) changes.storeId = null;
+      else if (store !== undefined) {
+        // Gift Keeper does not check a gift's storeId, so only ids from its store list go in.
+        const found = await findStore(conn, store);
+        if (found.miss) return { app: app.name, changed: false, ...found.miss };
+        changes.storeId = found.store.id;
+        storeName = found.store.name;
+      }
       if (Object.keys(changes).length === 0) {
         return {
           app: app.name,
           changed: false,
-          message: 'Nothing to change: give a status, price, name or notes.',
+          message: 'Nothing to change: give a status, price, name, notes or store.',
         };
       }
       const gift = await apiCall(conn, 'PUT', `/api/gifts/${encodeURIComponent(giftId)}`, changes);
       return {
         app: app.name,
         changed: true,
-        gift: { id: gift.id, name: gift.name, status: gift.status, price: gift.price ?? null },
+        gift: {
+          id: gift.id,
+          name: gift.name,
+          status: gift.status,
+          price: gift.price ?? null,
+          store: store === undefined ? undefined : storeName,
+        },
       };
+    },
+  },
+  {
+    name: 'gift_keeper_add_store',
+    description:
+      'Add a store (shop or website) to Gift Keeper, so ideas and gifts can be marked as from it (the store field of gift_keeper_add_idea, gift_keeper_update_idea, gift_keeper_promote_idea and gift_keeper_update_gift). Refuses a name already there.',
+    input: z.object({
+      name: z.string().trim().min(1).max(200),
+      url: z.string().url().max(2000).optional(),
+      location: z.string().max(200).optional(),
+      phone: z.string().max(50).optional(),
+      notes: z.string().max(2000).optional(),
+    }),
+    write: true,
+    async run(input) {
+      const conn = await appConnection(app);
+      if (!conn.ok) return notAvailable(app, conn);
+      const found = await findStore(conn, input.name);
+      if (found.store) {
+        return {
+          app: app.name,
+          added: false,
+          message: `"${found.store.name}" is already a store in Gift Keeper.`,
+        };
+      }
+      const store = await apiCall(conn, 'POST', '/api/stores', input);
+      return { app: app.name, added: true, store: { id: store.id, name: store.name } };
     },
   },
   {

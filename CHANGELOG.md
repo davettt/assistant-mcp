@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.1] - 2026-10-29
+
+### Added
+
+- `gift_keeper_promote_idea`: turns a gift idea into a tracked gift for an occasion (by occasion name or id), as the app's Promote button does. The gift is for the idea's person unless another is named; `keepIdea` leaves the idea in the pool. Refuses an idea already promoted, and lists the occasions or people when a name does not match.
+- `gift_keeper_add_store`: adds a store (shop or website) by name, with optional link, location, phone and notes; refuses a name already there.
+- A `store` field (by name) on `gift_keeper_add_idea`, `gift_keeper_update_idea`, `gift_keeper_promote_idea` and `gift_keeper_update_gift`; `null` clears it on updates. A name that does not match lists the stores. A store on ideas needs Gift Keeper 1.5.0; older versions get a reply saying so. Promoting an idea carries its store to the gift unless another is named.
+
+### Changed
+
+- `gift_keeper_ideas` marks ideas already promoted (`promoted: true`), and the ideas and `update_idea` descriptions and the server instructions point to the new tool.
+- `gift_keeper_ideas` and `gift_keeper_gifts` show each item's store.
+
 ## [0.8.0] - 2026-10-27
 
 ### Added
