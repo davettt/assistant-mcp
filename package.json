@@ -1,6 +1,6 @@
 {
   "name": "@tiongcreative/assistant-mcp",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "MCP server that lets an AI assistant on your Mac use your Tiong Creative apps while they are open.",
   "type": "module",
   "bin": {

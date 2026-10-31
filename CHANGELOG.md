@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.2] - 2026-10-31
+
+### Added
+
+- Archiving and unarchiving: `lists_and_notes_move` takes `archived` (true or false) for a list or a note, and its `category` is now optional; `lists_and_notes_update_note` takes `archived` too. An archived list or note keeps its category, so unarchiving puts it back there. Needs Lists & Notes 1.25.0; older versions get a reply saying to move it to the archive category instead.
+
+### Changed
+
+- `lists_and_notes_lists` and `lists_and_notes_notes` leave archived lists and notes out by default, as the Lists & Notes app does since 1.25.0 (an `archived` flag on the list or note). A new `scope` input takes `current` (default), `archive` or `all`. When a search leaves out matching archived items, the reply carries a `hint` saying how many.
+- Archived lists and notes show `archived: true` and `archivedAt` wherever they appear. Looking one up by name (`lists_and_notes_lists` with `name`, `lists_and_notes_note`, and the write tools) still finds it.
+- `lists_and_notes_categories` counts only current lists and notes per category, adds an `archived` count where there are any, and no longer shows an `archive` category.
+- Older Lists & Notes versions, which filed archived items under an `archive` category, are treated the same way, so their archive is hidden too.
+- The Lists & Notes line in the server instructions and the tool descriptions say how archived items are handled.
+- Fixed: with Lists & Notes 1.25.0, which hides the archive category, moving a note or list to "archive" failed with "No category called archive", so archiving through the assistant stopped working. Asking for the archive category now archives it. A list or note archived the old way, with no category to go back to, asks for one before it is unarchived.
+
 ## [0.8.1] - 2026-10-29
 
 ### Added

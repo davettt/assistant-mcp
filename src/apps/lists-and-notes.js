@@ -18,12 +18,47 @@ export const app = {
   tokenFile: 'assistant.json',
 };
 
+// Lists & Notes 1.25.0 archives with a flag (`archived`, `archivedAt`) and keeps the real
+// category. Before that, archiving meant filing under an "archive" category, which 1.25.0
+// converts at start-up; both count here, so older apps hide their archive too.
+function isArchived(r) {
+  return (
+    r.archived === true ||
+    (typeof r.category === 'string' && r.category.split('/')[0].trim().toLowerCase() === 'archive')
+  );
+}
+
+const SCOPE = z
+  .enum(['current', 'archive', 'all'])
+  .default('current')
+  .describe(
+    'current (default) leaves archived ones out, as the app does; archive for only archived ones; all for both',
+  );
+
+/** Keeps the records in scope; says how many archived ones also match when they are left out. */
+function inScope(records, scope) {
+  if (scope === 'all') return { kept: records };
+  const kept = records.filter((r) => isArchived(r) === (scope === 'archive'));
+  return { kept, other: records.length - kept.length };
+}
+
+function archiveHint(scope, other, kind) {
+  if (scope !== 'current' || !other) return undefined;
+  return `${other} more ${kind} in the archive match; ask with scope "archive" or "all" to see them.`;
+}
+
+function archiveFields(r) {
+  if (!isArchived(r)) return {};
+  return { archived: true, archivedAt: r.archivedAt ?? undefined };
+}
+
 function summariseList(l) {
   const items = l.items ?? [];
   return {
     id: l.id,
     name: l.name,
     category: l.category,
+    ...archiveFields(l),
     priority: l.priority,
     favourite: l.favorite === true || undefined,
     tags: l.tags?.length ? l.tags : undefined,
@@ -38,6 +73,7 @@ function summariseNote(n) {
     id: n.id,
     title: n.title,
     category: n.category,
+    ...archiveFields(n),
     tags: n.tags?.length ? n.tags : undefined,
     favourite: n.favorite === true || undefined,
     preview: n.preview,
@@ -53,11 +89,13 @@ function matches(text, q) {
 
 const WRITES_FROM = '1.23.0';
 const CATEGORY_WRITES_FROM = '1.24.0';
+const ARCHIVE_FROM = '1.25.0';
 
 /** What needs a newer app than some have, for assistant_info. */
 export const needs = [
   { version: WRITES_FROM, for: 'Changing lists and notes' },
   { version: CATEGORY_WRITES_FROM, for: 'Adding and renaming categories' },
+  { version: ARCHIVE_FROM, for: 'Archiving and unarchiving lists and notes' },
 ];
 
 /** The app's version must support writes; returns a result to send back, or null. */
@@ -73,6 +111,77 @@ function needsUpdate(conn, min = WRITES_FROM, what = 'Changing lists and notes')
 function findCategory(categories, name) {
   const wanted = name.trim().toLowerCase();
   return categories.find((c) => c.toLowerCase() === wanted);
+}
+
+/**
+ * Where a list or note is going: a category (which must exist), into or out of the archive,
+ * or both. From 1.25.0 the archive is a flag and the "archive" category is hidden, so asking
+ * for that category archives instead (older apps still have it as a real category).
+ * Returns { category, archived } or { result } to send back.
+ */
+async function resolvePlace(conn, input) {
+  let { archived } = input;
+  let category;
+  const flagArchive = !olderThan(conn.version, ARCHIVE_FROM);
+  if (input.category !== undefined) {
+    if (flagArchive && isArchived({ category: input.category })) {
+      if (archived === false)
+        return {
+          result: {
+            app: app.name,
+            changed: false,
+            message: 'To bring it out of the archive, give the category it should go back to.',
+          },
+        };
+      archived = true;
+    } else {
+      const categories = await apiCall(conn, 'GET', '/api/data/categories');
+      category = findCategory(categories, input.category);
+      if (!category)
+        return {
+          result: {
+            app: app.name,
+            changed: false,
+            message: `No category called "${input.category}".`,
+            categories,
+          },
+        };
+    }
+  }
+  if (archived !== undefined && !flagArchive) {
+    return {
+      result: {
+        app: app.name,
+        changed: false,
+        message: `Archiving and unarchiving need Lists & Notes ${ARCHIVE_FROM} or later (this Mac has ${conn.version ?? 'an older version'}). On this version, move it to the archive category instead.`,
+      },
+    };
+  }
+  return { category, archived };
+}
+
+/**
+ * Coming out of the archive needs a real category. A record archived before 1.25.0 still
+ * sits in the old archive category, so without one the app refuses; ask first instead.
+ */
+async function needsCategoryToUnarchive(conn, record, place) {
+  if (place.archived !== false || place.category !== undefined) return null;
+  if (!isArchived({ category: record.category })) return null;
+  return {
+    app: app.name,
+    changed: false,
+    message:
+      'This was archived by filing it in the old archive category, so it has no category to go back to. Give one of these.',
+    categories: await apiCall(conn, 'GET', '/api/data/categories'),
+  };
+}
+
+/** The fields a PUT or PATCH sends for a place. */
+function placeFields(place) {
+  return {
+    ...(place.category !== undefined ? { category: place.category } : {}),
+    ...(place.archived !== undefined ? { archived: place.archived } : {}),
+  };
 }
 
 async function findList(conn, name) {
@@ -111,16 +220,17 @@ function itemMatches(item, text) {
 
 /** This app's line in the server's instructions: which tool does which job. */
 export const instructions =
-  "Lists & Notes: lists (with items) and notes, each in one category. Change a note's text, title or category: lists_and_notes_update_note. Move a list to another category: lists_and_notes_move. Tick, untick or reword items: lists_and_notes_update_items. A category must exist before anything goes in it: lists_and_notes_add_category.";
+  "Lists & Notes: lists (with items) and notes, each in one category. Change a note's text, title or category: lists_and_notes_update_note. Move a list to another category, or archive or unarchive a list or note: lists_and_notes_move. Tick, untick or reword items: lists_and_notes_update_items. A category must exist before anything goes in it: lists_and_notes_add_category. Archived lists and notes are left out of lists_and_notes_lists and lists_and_notes_notes unless scope is archive or all.";
 
 export const tools = [
   {
     name: 'lists_and_notes_lists',
     description:
-      'The lists in Lists & Notes (checklists and plain lists) with their category, how many items each has and how many are done. Give a name to get one list with its items.',
+      'The lists in Lists & Notes (checklists and plain lists) with their category, how many items each has and how many are done. Archived lists are left out unless scope says otherwise. Give a name to get one list with its items, archived or not.',
     input: z.object({
       name: z.string().max(75).optional().describe('A list name, for that list with its items'),
       search: z.string().max(100).optional().describe('Case-insensitive match on list names'),
+      scope: SCOPE,
     }),
     async run(input) {
       const conn = await appConnection(app);
@@ -151,21 +261,28 @@ export const tools = [
           },
         };
       }
-      let out = lists.map(summariseList);
+      let found = lists;
       if (input.search) {
         const q = input.search.toLowerCase();
-        out = out.filter((l) => matches(l.name, q));
+        found = found.filter((l) => matches(l.name, q));
       }
-      return { app: app.name, count: out.length, lists: out };
+      const { kept, other } = inScope(found, input.scope);
+      return {
+        app: app.name,
+        count: kept.length,
+        lists: kept.map(summariseList),
+        hint: archiveHint(input.scope, other, other === 1 ? 'list' : 'lists'),
+      };
     },
   },
   {
     name: 'lists_and_notes_notes',
     description:
-      'Notes in Lists & Notes: title, category, tags and a short preview of each. Search matches the title, preview, summary and tags. Use lists_and_notes_note for the full text of one note.',
+      'Notes in Lists & Notes: title, category, tags and a short preview of each. Search matches the title, preview, summary and tags. Archived notes are left out unless scope says otherwise. Use lists_and_notes_note for the full text of one note.',
     input: z.object({
       search: z.string().max(100).optional(),
       category: z.string().max(100).optional(),
+      scope: SCOPE,
       limit: z.number().int().min(1).max(200).default(50),
     }),
     async run(input) {
@@ -186,14 +303,20 @@ export const tools = [
             (n.tags ?? []).some((t) => matches(t, q)),
         );
       }
-      notes.sort((a, b) => String(b.modified ?? '').localeCompare(String(a.modified ?? '')));
-      return { app: app.name, count: notes.length, notes: notes.slice(0, input.limit) };
+      const { kept, other } = inScope(notes, input.scope);
+      kept.sort((a, b) => String(b.modified ?? '').localeCompare(String(a.modified ?? '')));
+      return {
+        app: app.name,
+        count: kept.length,
+        notes: kept.slice(0, input.limit),
+        hint: archiveHint(input.scope, other, other === 1 ? 'note' : 'notes'),
+      };
     },
   },
   {
     name: 'lists_and_notes_note',
     description:
-      'The full markdown text of one note in Lists & Notes, by title. If the title does not match, the reply lists the closest titles.',
+      'The full markdown text of one note in Lists & Notes, by title, archived or not (an archived note says so). If the title does not match, the reply lists the closest titles.',
     input: z.object({ title: z.string().min(1).max(75) }),
     async run(input) {
       const conn = await appConnection(app);
@@ -403,13 +526,17 @@ export const tools = [
   {
     name: 'lists_and_notes_update_note',
     description:
-      "Change a note in Lists & Notes, by title: add text to the end (append), replace its text, rename it, or move it to another category (which must already exist; if it does not, the reply lists the categories). Any of these can be done in one call. If the user edits the note at the same moment, the change is applied to their latest version; the app keeps the previous text in the note's history.",
+      "Change a note in Lists & Notes, by title: add text to the end (append), replace its text, rename it, move it to another category (which must already exist; if it does not, the reply lists the categories), or archive or unarchive it. Any of these can be done in one call. If the user edits the note at the same moment, the change is applied to their latest version; the app keeps the previous text in the note's history. lists_and_notes_move archives lists as well as notes.",
     input: z.object({
       title: z.string().min(1).max(75).describe('The note as it is titled now'),
       append: z.string().max(200000).optional().describe('Text added on a new line at the end'),
       content: z.string().max(200000).optional().describe('Replaces the whole text'),
       newTitle: z.string().trim().min(1).max(75).optional(),
       category: z.string().min(1).max(50).optional().describe('Moves the note to this category'),
+      archived: z
+        .boolean()
+        .optional()
+        .describe('true archives the note (it keeps its category); false brings it back'),
     }),
     write: true,
     async run(input) {
@@ -421,13 +548,14 @@ export const tools = [
         input.append === undefined &&
         input.content === undefined &&
         input.newTitle === undefined &&
-        input.category === undefined
+        input.category === undefined &&
+        input.archived === undefined
       ) {
         return {
           app: app.name,
           changed: false,
           message:
-            'Nothing to change: give text to append, new content, a new title or a category.',
+            'Nothing to change: give text to append, new content, a new title, a category or archived.',
         };
       }
       if (input.append !== undefined && input.content !== undefined) {
@@ -437,18 +565,8 @@ export const tools = [
           message: 'Give either append or content, not both.',
         };
       }
-      let category;
-      if (input.category !== undefined) {
-        const categories = await apiCall(conn, 'GET', '/api/data/categories');
-        category = findCategory(categories, input.category);
-        if (!category)
-          return {
-            app: app.name,
-            changed: false,
-            message: `No category called "${input.category}".`,
-            categories,
-          };
-      }
+      const place = await resolvePlace(conn, input);
+      if (place.result) return place.result;
       const first = await findNote(conn, input.title);
       if (!first.note)
         return {
@@ -460,8 +578,9 @@ export const tools = [
       const id = first.note.id;
       const load = () => apiCall(conn, 'GET', `/api/data/notes/${encodeURIComponent(id)}`);
       return withRetry(load, async (note) => {
-        const body = { baseModified: note.metadata?.modified };
-        if (category !== undefined) body.category = category;
+        const stuck = await needsCategoryToUnarchive(conn, note, place);
+        if (stuck) return stuck;
+        const body = { baseModified: note.metadata?.modified, ...placeFields(place) };
         if (input.content !== undefined) body.content = input.content;
         if (input.append !== undefined) {
           const current = typeof note.content === 'string' ? note.content : '';
@@ -483,7 +602,7 @@ export const tools = [
   {
     name: 'lists_and_notes_categories',
     description:
-      'The categories in Lists & Notes with how many lists and notes are in each. A category written "parent/child" is a subcategory.',
+      'The categories in Lists & Notes with how many current lists and notes are in each, and how many archived ones when there are any. A category written "parent/child" is a subcategory.',
     input: z.object({}),
     async run() {
       const conn = await appConnection(app);
@@ -493,15 +612,22 @@ export const tools = [
         apiCall(conn, 'GET', '/api/data/lists'),
         apiCall(conn, 'GET', '/api/data/notes'),
       ]);
-      const count = (records, c) => records.filter((r) => r.category === c).length;
+      const count = (records, c, archived) =>
+        records.filter((r) => r.category === c && isArchived(r) === archived).length;
+      // Before 1.25.0 the app lists its "archive" category too; 1.25.0 hides it.
+      const shown = categories.filter((c) => !isArchived({ category: c }));
       return {
         app: app.name,
-        count: categories.length,
-        categories: categories.map((name) => ({
-          name,
-          lists: count(lists, name),
-          notes: count(notes, name),
-        })),
+        count: shown.length,
+        categories: shown.map((name) => {
+          const archived = count(lists, name, true) + count(notes, name, true);
+          return {
+            name,
+            lists: count(lists, name, false),
+            notes: count(notes, name, false),
+            archived: archived || undefined,
+          };
+        }),
       };
     },
   },
@@ -569,11 +695,15 @@ export const tools = [
   {
     name: 'lists_and_notes_move',
     description:
-      'Move a list or a note to another category in Lists & Notes. Name the list or the note title, and a category that already exists; if it does not, the reply lists the categories. lists_and_notes_update_note can also move a note while changing its text or title.',
+      'Move a list or a note to another category in Lists & Notes, or archive or unarchive it. Name the list or the note title, and a category that already exists (if it does not, the reply lists the categories), archived, or both. An archived list or note keeps its category, and unarchiving puts it back there. lists_and_notes_update_note can also move or archive a note while changing its text or title.',
     input: z.object({
       list: z.string().min(1).max(75).optional(),
       note: z.string().min(1).max(75).optional().describe('A note title'),
-      category: z.string().min(1).max(50),
+      category: z.string().min(1).max(50).optional(),
+      archived: z
+        .boolean()
+        .optional()
+        .describe('true archives it (it keeps its category); false brings it back'),
     }),
     write: true,
     async run(input) {
@@ -584,15 +714,11 @@ export const tools = [
       if ((input.list === undefined) === (input.note === undefined)) {
         return { app: app.name, changed: false, message: 'Give either a list or a note.' };
       }
-      const categories = await apiCall(conn, 'GET', '/api/data/categories');
-      const category = findCategory(categories, input.category);
-      if (!category)
-        return {
-          app: app.name,
-          changed: false,
-          message: `No category called "${input.category}".`,
-          categories,
-        };
+      if (input.category === undefined && input.archived === undefined) {
+        return { app: app.name, changed: false, message: 'Give a category, archived, or both.' };
+      }
+      const place = await resolvePlace(conn, input);
+      if (place.result) return place.result;
       if (input.list !== undefined) {
         const first = await findList(conn, input.list);
         if (!first.list)
@@ -608,11 +734,13 @@ export const tools = [
         return withRetry(load, async (list) => {
           if (!list)
             return { app: app.name, changed: false, message: 'That list has just been removed.' };
+          const stuck = await needsCategoryToUnarchive(conn, list, place);
+          if (stuck) return stuck;
           const updated = await apiCall(
             conn,
             'PATCH',
             `/api/data/lists/${encodeURIComponent(id)}`,
-            { category, baseModified: list.metadata?.modified },
+            { ...placeFields(place), baseModified: list.metadata?.modified },
           );
           return { app: app.name, changed: true, list: summariseList(updated) };
         });
@@ -628,8 +756,10 @@ export const tools = [
       const id = first.note.id;
       const load = () => apiCall(conn, 'GET', `/api/data/notes/${encodeURIComponent(id)}`);
       return withRetry(load, async (note) => {
+        const stuck = await needsCategoryToUnarchive(conn, note, place);
+        if (stuck) return stuck;
         const updated = await apiCall(conn, 'PUT', `/api/data/notes/${encodeURIComponent(id)}`, {
-          category,
+          ...placeFields(place),
           baseModified: note.metadata?.modified,
         });
         return { app: app.name, changed: true, note: summariseNote(updated) };

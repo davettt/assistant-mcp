@@ -366,5 +366,95 @@ describe(
       assert.equal(byName['travel/beaches'].lists, 1, 'the list followed the rename');
       assert.equal(byName.travel.notes, 1, 'the note followed the rename');
     });
+
+    it('leaves archived lists and notes out unless asked, and still finds them by name', async () => {
+      const call = async (name, args = {}) =>
+        parse(await client.callTool({ name, arguments: args }));
+      // Archive one list and one note in the window, the way 1.25.0 does it (a flag).
+      await call('lists_and_notes_add_list', { name: 'Old trip', items: ['Map'] });
+      const lists = await send('GET', '/api/data/lists');
+      await send(
+        'POST',
+        '/api/data/lists',
+        lists.map((l) => (l.name === 'Old trip' ? { ...l, archived: true } : l)),
+      );
+      const archivedNote = await call('lists_and_notes_add_note', {
+        title: 'Old ideas',
+        content: 'Visit the lake in winter.',
+      });
+      const note = await send('GET', `/api/data/notes/${archivedNote.note.id}`);
+      await send('PUT', `/api/data/notes/${note.id}`, { ...note, archived: true });
+
+      const current = await call('lists_and_notes_lists', { search: 'trip' });
+      assert.deepEqual(
+        current.lists.map((l) => l.name),
+        ['Camping trip'],
+      );
+      assert.match(current.hint, /1 more list in the archive/);
+      const archive = await call('lists_and_notes_lists', { scope: 'archive' });
+      assert.deepEqual(
+        archive.lists.map((l) => [l.name, l.archived]),
+        [['Old trip', true]],
+      );
+      assert.equal(archive.hint, undefined);
+      assert.equal(
+        (await call('lists_and_notes_lists', { search: 'trip', scope: 'all' })).count,
+        2,
+      );
+      const byName = await call('lists_and_notes_lists', { name: 'old trip' });
+      assert.equal(byName.found, true);
+      assert.equal(byName.list.archived, true);
+
+      const notes = await call('lists_and_notes_notes', { search: 'lake' });
+      assert.deepEqual(
+        notes.notes.map((n) => n.title),
+        ['Trip ideas'],
+      );
+      assert.match(notes.hint, /1 more note in the archive/);
+      const allNotes = await call('lists_and_notes_notes', { search: 'lake', scope: 'all' });
+      assert.equal(allNotes.count, 2);
+      const full = await call('lists_and_notes_note', { title: 'Old ideas' });
+      assert.equal(full.note.archived, true);
+
+      const cats = await call('lists_and_notes_categories');
+      const personal = cats.categories.find((c) => c.name === 'personal');
+      assert.equal(personal.archived, 2, JSON.stringify(personal));
+      assert.ok(!cats.categories.some((c) => c.name === 'archive'));
+    });
+
+    it('archives and unarchives lists and notes, keeping their category', async () => {
+      const call = async (name, args = {}) =>
+        parse(await client.callTool({ name, arguments: args }));
+      const list = await call('lists_and_notes_move', { list: 'Camping trip', archived: true });
+      assert.equal(list.changed, true, JSON.stringify(list));
+      assert.equal(list.list.archived, true);
+      assert.equal(list.list.category, 'travel/beaches', 'the category stays');
+      const back = await call('lists_and_notes_move', { list: 'Camping trip', archived: false });
+      assert.equal(back.list.archived, undefined);
+      assert.equal(back.list.category, 'travel/beaches');
+
+      // The old habit, moving to the archive category, archives instead.
+      const note = await call('lists_and_notes_move', { note: 'Trip ideas', category: 'Archive' });
+      assert.equal(note.changed, true, JSON.stringify(note));
+      assert.equal(note.note.archived, true);
+      assert.equal(note.note.category, 'travel');
+      assert.equal((await call('lists_and_notes_notes', { search: 'trip' })).count, 0);
+      const out = await call('lists_and_notes_update_note', {
+        title: 'Trip ideas',
+        archived: false,
+        append: 'Back again.',
+      });
+      assert.equal(out.changed, true, JSON.stringify(out));
+      assert.equal(out.note.archived, undefined);
+
+      const conflicting = await call('lists_and_notes_move', {
+        note: 'Trip ideas',
+        category: 'archive',
+        archived: false,
+      });
+      assert.equal(conflicting.changed, false);
+      const nothing = await call('lists_and_notes_move', { note: 'Trip ideas' });
+      assert.equal(nothing.changed, false);
+    });
   },
 );
