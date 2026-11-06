@@ -1,13 +1,17 @@
 # Changelog
 
-## [0.8.3] - 2026-11-07
+## [0.9.0] - 2026-11-07
 
 ### Added
 
+- Prompts: starters the user picks from the AI app's menu (in Claude Desktop, the + button), each offered only when the apps it uses are installed. "What needs my attention this week" (all apps), "Check a statement against my budget" and "Review this month's budget" (Budget Planner), "Plan gifts for upcoming occasions" (Gift Keeper, takes how many days ahead) and "Tidy my notes" (Lists & Notes). Each one says which tools to call in what order, and to show proposed changes and wait for the user's OK before writing. "Check a statement" reads an attached bank or card statement (screenshots, a PDF, a CSV export or pasted text), matches it against the existing expenses, and proposes amount changes from the statement's dates, new recurring charges, end dates for cancelled ones and account balances.
+- `assistant_info` gives where to send feedback or report a problem (the Tiong Creative contact page, topic "Product support", or email), and the server instructions tell the assistant to draft the note for the user to send. The server sends nothing itself.
 - `budget_planner_update_expense` takes `estimate` (true or false) to switch an existing expense between Estimate (spread evenly over the months) and Fixed (counted on its payment dates). It applies to all dates, like correcting the type in the app, and switching to Fixed clears the estimate's worked-out basis, as the app does. No newer Budget Planner needed: the app's expense route already accepted the type.
 
 ### Changed
 
+- The server instructions gain a rule across all apps: before several changes from one source (a statement, a document, a pasted list), show the proposed changes and wait for the user to agree.
+- `assistant_info` adds `latestVersion`: the server checks nothing online, so it says so and gives the npm page to compare against, for the user or an assistant that can browse.
 - Fixed: an assistant could add an annual bill or subscription as an Estimate, so it showed a twelfth of the cost every month instead of the full amount in its month, and had no way to correct it. The `estimate` description on `budget_planner_add_expense` now says it is only for spending with no set day (groceries, fuel, eating out) and to leave it off for bills paid on a date, annual ones included. `budget_planner_expenses` says what `estimate: true` means, and the Budget Planner instructions line names `update_expense` for the switch.
 - The pre-commit hook and the `deps:check` / `deps:verify` scripts find the shared build policy from the repository's own git folder, so they also run inside agent worktrees (synced from the shared template).
 

@@ -23,6 +23,22 @@ More apps follow, and the assistant can also open an app for you, but only after
 `assistant_info` tool reports the server version, each app's version, whether each app can be
 reached, and which apps need a newer version.
 
+## Prompts
+
+The server also offers ready-made starters for common routines. Pick one from your AI app's
+menu (in Claude Desktop, the + button). A prompt is listed only when the apps it needs are
+installed.
+
+| Prompt                              | App            | What it does                                                                                                                            |
+| ----------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| What needs my attention this week   | Any app        | Lists what is overdue or due in the next 7 days, grouped by app, and offers to deal with each item.                                     |
+| Check a statement against my budget | Budget Planner | Compares a bank or card statement you attach or paste with your recurring expenses, proposes changes, and makes the ones you agree to.  |
+| Review this month's budget          | Budget Planner | Shows this month's income, expenses and surplus, the biggest categories, and what is due for the rest of the month.                     |
+| Plan gifts for upcoming occasions   | Gift Keeper    | Shows the occasions coming up, what is sorted, and which saved ideas could become gifts. Takes an optional number of days (default 60). |
+| Tidy my notes                       | Lists & Notes  | Suggests moves, merges and archiving across your categories, lists and notes, and changes nothing until you agree.                      |
+
+Whether a client shows MCP prompts varies. Claude Desktop does; other clients may not.
+
 ## Setup
 
 You need Node.js and Claude Desktop. If you do not have Node.js, install it from

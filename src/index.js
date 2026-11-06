@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { ApiError, IMAGES, appConnection, isInstalled, olderThan } from './connection.js';
 import { runCli } from './install.js';
 import { buildInstructions } from './instructions.js';
+import { promptsFor } from './prompts.js';
 import * as dueAgain from './apps/due-again.js';
 import * as giftKeeper from './apps/gift-keeper.js';
 import * as clientManager from './apps/client-manager.js';
@@ -21,6 +22,14 @@ import * as budgetPlanner from './apps/budget-planner.js';
 import * as diagramSnap from './apps/diagramsnap.js';
 
 const { version } = createRequire(import.meta.url)('../package.json');
+const NPM_PAGE = 'https://www.npmjs.com/package/@tiongcreative/assistant-mcp';
+// Where a user sends a problem or a suggestion. The server sends nothing itself: the
+// assistant drafts the note and the user sends it, so nothing leaves the Mac unasked.
+const FEEDBACK = {
+  page: 'https://tiongcreative.com.au/contact/',
+  email: 'david@tiongcreative.com.au',
+  how: 'Draft a short note for the user to send (on the page, topic "Product support", or by email): what they asked for, what happened, and the server and app versions above. Leave out personal or financial details unless the user wants them in. The user sends it; nothing is sent from here.',
+};
 
 // `npx @tiongcreative/assistant-mcp install|uninstall|status` is the member's setup path.
 // With no command, this process is the MCP server Claude Desktop launches.
@@ -117,7 +126,7 @@ server.registerTool(
   {
     title: 'About this assistant',
     description:
-      'This Tiong Creative assistant server: its version, each app on this Mac with its version and whether it can be reached now, the tools each app has here, and anything that needs a newer app. Use it to check which version is connected or why a tool says an app needs updating.',
+      'This Tiong Creative assistant server: its version, each app on this Mac with its version and whether it can be reached now, the tools each app has here, and anything that needs a newer app. Use it to check which version is connected or why a tool says an app needs updating, where to check for the latest version, and where the user sends feedback or reports a problem.',
     inputSchema: {},
     annotations: { readOnlyHint: true },
   },
@@ -145,6 +154,14 @@ server.registerTool(
       node: process.version,
       apps,
       notInstalled: MISSING,
+      // The server calls nothing beyond 127.0.0.1, so it cannot know the latest version
+      // itself: it hands over the page that does, for the user or a web-capable assistant.
+      latestVersion: {
+        known: false,
+        checkAt: NPM_PAGE,
+        how: `This server does not check online. Compare ${version} with the version shown at ${NPM_PAGE}; give the user the link if you cannot open it.`,
+      },
+      feedback: FEEDBACK,
       note: 'A newer version of this server reaches the assistant when the AI app is restarted.',
     });
   },
@@ -170,6 +187,18 @@ for (const { tools } of APPS) {
       },
     );
   }
+}
+
+// Starters the user picks from the AI app's menu, for the apps installed here.
+for (const prompt of promptsFor(APPS)) {
+  server.registerPrompt(
+    prompt.name,
+    { title: prompt.title, description: prompt.description, argsSchema: prompt.args },
+    (args) => ({
+      description: prompt.description,
+      messages: [{ role: 'user', content: { type: 'text', text: prompt.text(args) } }],
+    }),
+  );
 }
 
 await server.connect(new StdioServerTransport());
