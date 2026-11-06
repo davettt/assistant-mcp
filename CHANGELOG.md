@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.1] - 2026-11-07
+
+### Added
+
+- A `routine` tool returns the same steps as the prompts (check a statement, review the month, plan gifts, tidy notes, what needs attention this week), and the server instructions tell the assistant to call it for those jobs. ChatGPT and Codex do not show MCP prompts, so there the assistant fetches the steps itself; Claude Desktop shows both.
+- `assistant_info` lists the routines (the `routine` tool's jobs, also offered as prompts), so asking for it shows what this server offers in clients that do not show prompts.
+
+### Changed
+
+- The MCP SDK is updated to 1.32.2, a patch release with typing fixes and a fix for registering tools after the server has connected. Nothing changes in how the tools behave.
+
 ## [0.9.0] - 2026-11-07
 
 ### Added

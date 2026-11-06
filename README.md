@@ -26,7 +26,7 @@ reached, and which apps need a newer version.
 ## Prompts
 
 The server also offers ready-made starters for common routines. Pick one from your AI app's
-menu (in Claude Desktop, the + button). A prompt is listed only when the apps it needs are
+menu (in Claude Desktop: + then "Add from tiongcreative"). A prompt is listed only when the apps it needs are
 installed.
 
 | Prompt                              | App            | What it does                                                                                                                            |
@@ -37,7 +37,7 @@ installed.
 | Plan gifts for upcoming occasions   | Gift Keeper    | Shows the occasions coming up, what is sorted, and which saved ideas could become gifts. Takes an optional number of days (default 60). |
 | Tidy my notes                       | Lists & Notes  | Suggests moves, merges and archiving across your categories, lists and notes, and changes nothing until you agree.                      |
 
-Whether a client shows MCP prompts varies. Claude Desktop does; other clients may not.
+Not every client shows MCP prompts: Claude Desktop does, while ChatGPT and Codex do not yet. The same steps are also a `routine` tool the assistant calls itself, so in any client you can just ask, for example, "check this statement against my budget".
 
 ## Setup
 

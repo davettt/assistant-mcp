@@ -91,6 +91,24 @@ describe('prompts', () => {
       assert.match(result.messages[0].content.text, /withinDays 21\b/);
     });
 
+    it('offers the same steps as a routine tool, for clients that do not show prompts', async () => {
+      const { tools } = await client.listTools();
+      const routine = tools.find((t) => t.name === 'routine');
+      assert.ok(routine, 'routine tool registered');
+      assert.deepEqual(routine.inputSchema.properties.name.enum.sort(), [
+        'attention_this_week',
+        'check_statement',
+        'plan_gifts',
+        'review_month_budget',
+      ]);
+      const result = await client.callTool({
+        name: 'routine',
+        arguments: { name: 'check_statement' },
+      });
+      const body = JSON.parse(result.content[0].text);
+      assert.equal(body.steps, PROMPTS.find((p) => p.name === 'check_statement').text({}));
+    });
+
     it('points assistant_info at the npm page for the latest version', async () => {
       const result = await client.callTool({ name: 'assistant_info', arguments: {} });
       const info = JSON.parse(result.content[0].text);
@@ -99,6 +117,12 @@ describe('prompts', () => {
         info.latestVersion.checkAt,
         'https://www.npmjs.com/package/@tiongcreative/assistant-mcp',
       );
+      assert.deepEqual(info.routines.names.map((r) => r.name).sort(), [
+        'attention_this_week',
+        'check_statement',
+        'plan_gifts',
+        'review_month_budget',
+      ]);
       assert.equal(info.feedback.page, 'https://tiongcreative.com.au/contact/');
       assert.match(info.feedback.how, /nothing is sent from here/);
     });

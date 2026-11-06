@@ -43,6 +43,8 @@ const ALL_APPS = [dueAgain, giftKeeper, clientManager, listsAndNotes, budgetPlan
 // app they do not have. Checked once at start-up: install an app, restart the assistant.
 const APPS = ALL_APPS.filter((a) => isInstalled(a.app));
 const MISSING = ALL_APPS.filter((a) => !isInstalled(a.app)).map((a) => a.app.name);
+// The prompts (and the routine tool's jobs) for the apps installed here.
+const PROMPTS_HERE = promptsFor(APPS);
 
 // A tool's reply as JSON text, followed by any images it attached (withImages), which the
 // chat shows as pictures.
@@ -161,6 +163,11 @@ server.registerTool(
         checkAt: NPM_PAGE,
         how: `This server does not check online. Compare ${version} with the version shown at ${NPM_PAGE}; give the user the link if you cannot open it.`,
       },
+      routines: {
+        tool: 'routine',
+        names: PROMPTS_HERE.map((p) => ({ name: p.name, title: p.title })),
+        note: 'Also offered as MCP prompts, in clients that show prompts (Claude Desktop does; ChatGPT and Codex do not).',
+      },
       feedback: FEEDBACK,
       note: 'A newer version of this server reaches the assistant when the AI app is restarted.',
     });
@@ -189,8 +196,28 @@ for (const { tools } of APPS) {
   }
 }
 
-// Starters the user picks from the AI app's menu, for the apps installed here.
-for (const prompt of promptsFor(APPS)) {
+// Starters the user picks from the AI app's menu, for the apps installed here. Many
+// clients (ChatGPT, Codex) do not show MCP prompts, so the same steps are also a
+// read-only tool the assistant calls itself.
+if (PROMPTS_HERE.length) {
+  server.registerTool(
+    'routine',
+    {
+      title: 'Steps for a common job',
+      description: `The steps for a common job across the apps, the same as this server's prompts: ${PROMPTS_HERE.map((p) => `${p.name} (${p.title})`).join('; ')}. Call it when the user asks for one of these (for example, a statement to check against the budget), then follow the steps it returns.`,
+      inputSchema: {
+        name: z.enum(PROMPTS_HERE.map((p) => p.name)),
+        days: z.string().optional().describe('For plan_gifts: how many days ahead'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ name, days }) => {
+      const prompt = PROMPTS_HERE.find((p) => p.name === name);
+      return text({ routine: prompt.title, steps: prompt.text({ days }) });
+    },
+  );
+}
+for (const prompt of PROMPTS_HERE) {
   server.registerPrompt(
     prompt.name,
     { title: prompt.title, description: prompt.description, argsSchema: prompt.args },
