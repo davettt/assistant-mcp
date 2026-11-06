@@ -171,7 +171,45 @@ describe(
         'earlier months keep the old amount',
       );
 
-      const list = await call('budget_planner_expenses', { search: 'ren' });
+      // An annual bill added as an Estimate is spread; switching it to Fixed puts it in its month.
+      await call('budget_planner_add_expense', {
+        name: 'Renewal',
+        amount: 120,
+        frequency: 'annually',
+        category: cats[0].name,
+        startDate: '2026-04-18',
+        estimate: true,
+      });
+      const spread = await call('budget_planner_budget', { period: 'monthly', date: '2026-05-15' });
+      assert.equal(spread.items.find((i) => i.name === 'Renewal').amount, 10, 'spread monthly');
+      const fixed = await call('budget_planner_update_expense', {
+        expense: 'Renewal',
+        estimate: false,
+      });
+      assert.equal(fixed.changed, true, JSON.stringify(fixed));
+      assert.equal(fixed.expense.estimate, undefined);
+      const aprilBill = await call('budget_planner_budget', {
+        period: 'monthly',
+        date: '2026-04-15',
+      });
+      const mayBill = await call('budget_planner_budget', {
+        period: 'monthly',
+        date: '2026-05-15',
+      });
+      assert.equal(aprilBill.items.find((i) => i.name === 'Renewal').amount, 120);
+      assert.ok(!mayBill.items.find((i) => i.name === 'Renewal')?.amount, 'nothing in May');
+      const same = await call('budget_planner_update_expense', {
+        expense: 'Renewal',
+        estimate: false,
+      });
+      assert.equal(same.changed, false, 'already Fixed');
+      const back = await call('budget_planner_update_expense', {
+        expense: 'Renewal',
+        estimate: true,
+      });
+      assert.equal(back.expense.estimate, true);
+
+      const list = await call('budget_planner_expenses', { search: 'rent' });
       assert.equal(list.count, 1);
       const missing = await call('budget_planner_update_expense', { expense: 'Gym', amount: 5 });
       assert.equal(missing.changed, false);

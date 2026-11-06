@@ -169,7 +169,7 @@ function describeScenarioExpenses(list, cats) {
 
 /** This app's line in the server's instructions: which tool does which job. */
 export const instructions =
-  'Budget Planner: recurring expenses, accounts and what-if scenarios. Give its figures as the tools return them (budget_planner_budget, budget_planner_scenarios) rather than working them out. A new amount from a date: budget_planner_update_expense. New scenario, or a copy of one: budget_planner_add_scenario; its loan, dates and its own costs (strata, rates): budget_planner_update_scenario. Bank and card balances: budget_planner_update_balances.';
+  'Budget Planner: recurring expenses, accounts and what-if scenarios. Give its figures as the tools return them (budget_planner_budget, budget_planner_scenarios) rather than working them out. A new amount from a date, or switching between Fixed and Estimate: budget_planner_update_expense. New scenario, or a copy of one: budget_planner_add_scenario; its loan, dates and its own costs (strata, rates): budget_planner_update_scenario. Bank and card balances: budget_planner_update_balances.';
 
 export const tools = [
   {
@@ -215,7 +215,7 @@ export const tools = [
   {
     name: 'budget_planner_expenses',
     description:
-      'The expenses set up in Budget Planner: each recurring item with its current amount, frequency, category, start and end dates, and any amount changes still to come. Search matches the name. Use budget_planner_budget for totals in a period.',
+      'The expenses set up in Budget Planner: each recurring item with its current amount, frequency, category, start and end dates, and any amount changes still to come (estimate: true means it is spread evenly over the months rather than counted on its payment dates). Search matches the name. Use budget_planner_budget for totals in a period.',
     input: z.object({
       search: z.string().max(100).optional(),
       category: z.string().max(100).optional(),
@@ -297,7 +297,7 @@ export const tools = [
   {
     name: 'budget_planner_add_expense',
     description:
-      'Add a recurring (or one-off) expense to Budget Planner. The category must already exist; if it does not, the reply lists the categories. Set estimate for a spread-out cost with no payment day, such as groceries or fuel.',
+      'Add a recurring (or one-off) expense to Budget Planner. The category must already exist; if it does not, the reply lists the categories. Estimate: true spreads it evenly over the months instead of counting it on its payment dates; only for spending with no set day, such as groceries, fuel or eating out. Leave it false for bills and subscriptions paid on a date, annual ones included, so they land in their month. To change it later: budget_planner_update_expense.',
     input: z.object({
       name: z.string().trim().min(1).max(100),
       amount: z.number().min(0).max(1e9),
@@ -306,7 +306,10 @@ export const tools = [
       subcategory: z.string().max(100).optional(),
       startDate: DATE.optional().describe('First payment; defaults to today'),
       endDate: DATE.optional(),
-      estimate: z.boolean().default(false),
+      estimate: z
+        .boolean()
+        .default(false)
+        .describe('Spread evenly over the months (no set payment day)'),
     }),
     write: true,
     async run(input) {
@@ -349,7 +352,7 @@ export const tools = [
   {
     name: 'budget_planner_update_expense',
     description:
-      "Change an expense in Budget Planner, by name. A new amount starts on a date (default today), so earlier months keep the old amount, the way the app's own change-from-a-date works. Also: rename it, move it to another category, or set the date it stops (endDate; null to keep it going). Changing how often it is paid is done in the app.",
+      "Change an expense in Budget Planner, by name. A new amount starts on a date (default today), so earlier months keep the old amount, the way the app's own change-from-a-date works. Also: rename it, move it to another category, set the date it stops (endDate; null to keep it going), or switch it between Fixed and Estimate (estimate: true spreads it evenly over the months, false counts it on its payment dates; this applies to all dates, like correcting the type in the app). Changing how often it is paid is done in the app.",
     input: z.object({
       expense: z.string().min(1).max(100).describe('The expense as it is named now'),
       amount: z.number().min(0).max(1e9).optional(),
@@ -358,6 +361,12 @@ export const tools = [
       category: z.string().min(1).max(100).optional(),
       subcategory: z.string().max(100).optional(),
       endDate: DATE.nullable().optional(),
+      estimate: z
+        .boolean()
+        .optional()
+        .describe(
+          'true: Estimate, spread evenly over the months; false: Fixed, on its payment dates',
+        ),
     }),
     write: true,
     async run(input) {
@@ -412,6 +421,14 @@ export const tools = [
           return { app: app.name, changed: false, message: 'The end date is before it starts.' };
         }
         body.endDate = input.endDate;
+      }
+      if (input.estimate !== undefined) {
+        const entryMode = input.estimate ? 'quick-estimate' : 'individual';
+        if (entryMode !== expense.entryMode) {
+          body.entryMode = entryMode;
+          // As the app's type picker does: the worked-out basis belongs to an Estimate only.
+          if (!input.estimate) body.estimateBasis = null;
+        }
       }
       if (Object.keys(body).length === 0) {
         return { app: app.name, changed: false, message: 'Nothing to change.' };

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.3] - 2026-11-07
+
+### Added
+
+- `budget_planner_update_expense` takes `estimate` (true or false) to switch an existing expense between Estimate (spread evenly over the months) and Fixed (counted on its payment dates). It applies to all dates, like correcting the type in the app, and switching to Fixed clears the estimate's worked-out basis, as the app does. No newer Budget Planner needed: the app's expense route already accepted the type.
+
+### Changed
+
+- Fixed: an assistant could add an annual bill or subscription as an Estimate, so it showed a twelfth of the cost every month instead of the full amount in its month, and had no way to correct it. The `estimate` description on `budget_planner_add_expense` now says it is only for spending with no set day (groceries, fuel, eating out) and to leave it off for bills paid on a date, annual ones included. `budget_planner_expenses` says what `estimate: true` means, and the Budget Planner instructions line names `update_expense` for the switch.
+- The pre-commit hook and the `deps:check` / `deps:verify` scripts find the shared build policy from the repository's own git folder, so they also run inside agent worktrees (synced from the shared template).
+
 ## [0.8.2] - 2026-10-31
 
 ### Added
