@@ -85,6 +85,103 @@ export const PROMPTS = [
         "Then make the changes I agreed to: lists_and_notes_move to move or archive a list or note, lists_and_notes_update_note to change a note's text or title, lists_and_notes_rename_category for a category name. Archive rather than delete; nothing here deletes.",
       ].join('\n'),
   },
+  {
+    name: 'getting_started',
+    title: 'What can you do with my apps?',
+    description:
+      'A short tour: which apps are connected, what you can ask for in each, and the routines you can run.',
+    apps: [],
+    text: () =>
+      [
+        'What can you help me with in my Tiong Creative apps?',
+        'Call assistant_info. For each app that is available, give one line on what I can ask for, with a real example in my own words (for example "what do I owe this month?"), not tool names. Say which apps are closed or have assistant access off, and how to turn it on (Settings, "Allow assistant access").',
+        'Then list the routines from assistant_info by title and say I can ask for any of them in plain words.',
+        'Mention that nothing here deletes, that you will ask before changing several things at once, and that I can say "send feedback" if something does not work.',
+        'Keep it short, and change nothing.',
+      ].join('\n'),
+  },
+  {
+    name: 'add_from_text',
+    title: 'Add things from an email or message',
+    description:
+      'Paste an email, booking confirmation, receipt or message; the assistant works out what belongs in which app and adds it once you agree.',
+    apps: [],
+    text: () =>
+      [
+        "I'm pasting (or attaching) an email, booking confirmation, receipt or message. Work out what in it belongs in my apps.",
+        'Use only the apps that have tools here. A renewal, appointment or service that comes round again: Due Again (due_again_add_item). A bill or subscription that is part of the budget: Budget Planner (budget_planner_add_expense). Work for a client: Client Manager (client_manager_add_task, client_manager_add_reminder or client_manager_log_activity). A gift idea for someone: Gift Keeper (gift_keeper_add_idea). Items to buy or do: Lists & Notes (lists_and_notes_add_items).',
+        'Before suggesting a new record, check it is not already there (due_again_items, budget_planner_expenses, client_manager_client, gift_keeper_ideas, lists_and_notes_lists).',
+        'Show a table: what you found, which app, and the record you would add or change, with its date and amount. Wait for my OK and leave out anything I reject.',
+        'Then add the ones I agreed to and say what was added. Dates come from the text, not today; if a date or amount is unclear, ask rather than guess.',
+      ].join('\n'),
+  },
+  {
+    name: 'chase_invoices',
+    title: 'Who owes me money',
+    description:
+      'Unpaid and overdue invoices in Client Manager, oldest first, with a draft follow-up for each client.',
+    apps: ['client-manager'],
+    args: {
+      client: z.string().optional().describe('Only this client'),
+    },
+    text: (args) =>
+      [
+        args?.client
+          ? `Who owes me money? Only for the client ${args.client}.`
+          : 'Who owes me money?',
+        `Call client_manager_invoices with status owing${args?.client ? ` and client ${args.client}` : ''}. Group by client, overdue first, then oldest first. For each, give the invoice number, the balance and how many days overdue it is. Add up the total owing as the invoices show it.`,
+        'For each client with something overdue, draft a short, friendly follow-up I can send myself (email or text), naming the invoices and balances. Do not send anything; there is no tool for that.',
+        'After I say I have sent one, offer to log it on the client (client_manager_log_activity, type email). Payments are recorded in the app; invoices cannot be changed from here.',
+      ].join('\n'),
+  },
+  {
+    name: 'client_week',
+    title: 'Plan my client week',
+    description:
+      'Client Manager reminders and tasks due in the next 7 days, plus overdue invoices, in one plan.',
+    apps: ['client-manager'],
+    text: () =>
+      [
+        'Help me plan my client work for the next 7 days.',
+        'Call client_manager_reminders and client_manager_tasks, each with withinDays 7, and client_manager_invoices with status overdue.',
+        'Give one list by day: overdue and high-priority items first, each with the client and job. Then the overdue invoices in a line each.',
+        'Offer, one item at a time, to complete or snooze a reminder (client_manager_update_reminder), move a task along (client_manager_update_task), or log a call, meeting or email that happened (client_manager_log_activity). Change nothing until I say which.',
+      ].join('\n'),
+  },
+  {
+    name: 'month_ahead',
+    title: "What's coming up this month",
+    description:
+      'Renewals, appointments and other Due Again items in the next 31 days, by week, with expected costs.',
+    apps: ['due-again'],
+    text: () =>
+      [
+        "What's coming up in Due Again over the next month?",
+        "Call due_again_items with withinDays 31. Group by week, overdue first, with each item's due date, category and expected cost. Mark costs that vary as estimates, and give a total of the expected costs, saying it includes estimates if any do.",
+        'Point out anything overdue and anything with no expected cost.',
+        'Then offer, one item at a time: done (due_again_complete, which works out the next date), not this time (due_again_skip), or a different date for this occurrence only (due_again_reschedule). Change nothing until I say which.',
+      ].join('\n'),
+  },
+  {
+    name: 'note_to_diagram',
+    title: 'Turn a note into a diagram',
+    description:
+      'Take a note from Lists & Notes (a process, a plan, a set of ideas) and draw it as a diagram in DiagramSnap.',
+    apps: ['lists-and-notes', 'diagramsnap'],
+    args: {
+      note: z.string().optional().describe('The note’s title'),
+    },
+    text: (args) =>
+      [
+        args?.note
+          ? `Turn my note "${args.note}" from Lists & Notes into a diagram in DiagramSnap.`
+          : 'Turn one of my Lists & Notes notes into a diagram in DiagramSnap. Ask me which note, or list recent ones (lists_and_notes_notes) to choose from.',
+        'Read the note with lists_and_notes_note.',
+        'Propose the diagram in words first: the boxes (short labels), what connects to what and in which direction, and any groups. Say whether it reads best top to bottom or left to right. Wait for my OK.',
+        'Then create it with diagramsnap_create_diagram, named after the note, and show me the picture it returns.',
+        'For changes, read it again (diagramsnap_diagram) and send the whole drawing back with diagramsnap_update_diagram, as that tool describes. If it says the diagram changed in the meantime, read it again rather than resending.',
+      ].join('\n'),
+  },
 ];
 
 /** The prompts for the apps installed on this Mac. */

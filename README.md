@@ -29,15 +29,29 @@ The server also offers ready-made starters for common routines. Pick one from yo
 menu (in Claude Desktop: + then "Add from tiongcreative"). A prompt is listed only when the apps it needs are
 installed.
 
-| Prompt                              | App            | What it does                                                                                                                            |
-| ----------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| What needs my attention this week   | Any app        | Lists what is overdue or due in the next 7 days, grouped by app, and offers to deal with each item.                                     |
-| Check a statement against my budget | Budget Planner | Compares a bank or card statement you attach or paste with your recurring expenses, proposes changes, and makes the ones you agree to.  |
-| Review this month's budget          | Budget Planner | Shows this month's income, expenses and surplus, the biggest categories, and what is due for the rest of the month.                     |
-| Plan gifts for upcoming occasions   | Gift Keeper    | Shows the occasions coming up, what is sorted, and which saved ideas could become gifts. Takes an optional number of days (default 60). |
-| Tidy my notes                       | Lists & Notes  | Suggests moves, merges and archiving across your categories, lists and notes, and changes nothing until you agree.                      |
+| Prompt                              | App                         | What it does                                                                                                                            |
+| ----------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| What needs my attention this week   | Any app                     | Lists what is overdue or due in the next 7 days, grouped by app, and offers to deal with each item.                                     |
+| Check a statement against my budget | Budget Planner              | Compares a bank or card statement you attach or paste with your recurring expenses, proposes changes, and makes the ones you agree to.  |
+| Review this month's budget          | Budget Planner              | Shows this month's income, expenses and surplus, the biggest categories, and what is due for the rest of the month.                     |
+| Plan gifts for upcoming occasions   | Gift Keeper                 | Shows the occasions coming up, what is sorted, and which saved ideas could become gifts. Takes an optional number of days (default 60). |
+| Tidy my notes                       | Lists & Notes               | Suggests moves, merges and archiving across your categories, lists and notes, and changes nothing until you agree.                      |
+| What can you do with my apps?       | Any app                     | Shows which apps are connected, what you can ask for in each, and the routines you can run. Changes nothing.                            |
+| Add things from an email or message | Any app                     | Works out what in a pasted or attached email, booking, receipt or message belongs in which app, and adds it once you agree.             |
+| Who owes me money                   | Client Manager              | Lists unpaid and overdue invoices, oldest first, with a draft follow-up for each client. Takes an optional client name.                 |
+| Plan my client week                 | Client Manager              | Reminders and tasks due in the next 7 days, plus overdue invoices, in one plan.                                                         |
+| What's coming up this month         | Due Again                   | Renewals, appointments and other items due in the next 31 days, by week, with expected costs.                                           |
+| Turn a note into a diagram          | Lists & Notes + DiagramSnap | Draws a note (a process, a plan, a set of ideas) as a diagram, after you agree the layout in words. Takes an optional note title.       |
 
 Not every client shows MCP prompts: Claude Desktop does, while ChatGPT and Codex do not yet. The same steps are also a `routine` tool the assistant calls itself, so in any client you can just ask, for example, "check this statement against my budget".
+
+## Feedback
+
+If something did not work, or you wish the assistant could do more, tell it (for example, say
+"send feedback"). It offers to draft a note with the versions of the server and your apps
+filled in, and gives you an email link that opens the note ready to send, so the assistant never
+sends anything itself. Or use the contact form at https://tiongcreative.com.au/contact/ and choose
+"Product support" as the topic.
 
 ## Setup
 

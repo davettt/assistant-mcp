@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0] - 2026-11-07
+
+### Added
+
+- A `feedback` tool. When the user reports a problem or wishes the apps or assistant did more, the assistant offers it: it drafts a note with the server, Node and app versions filled in, and returns an email link that opens the note ready to send, plus the contact page as the other way. It sends nothing itself. Before, the feedback details sat inside `assistant_info`, and an assistant told "I wish there were more prompts" did not think to offer them.
+- Six more routines, as prompts and through the `routine` tool: "What can you do with my apps?" (a short tour of the connected apps and routines), "Add things from an email or message" (works out which app each thing belongs in and checks for duplicates before proposing), "Who owes me money" (Client Manager, with a draft follow-up per client, optional client), "Plan my client week" (Client Manager reminders, tasks and overdue invoices), "What's coming up this month" (Due Again, by week with expected costs) and "Turn a note into a diagram" (needs both Lists & Notes and DiagramSnap, optional note title).
+
+### Changed
+
+- The `routine` tool takes each routine's own options (days, client, note), not only `days`.
+- The server instructions name the `feedback` tool and the new routines.
+
 ## [0.9.1] - 2026-11-07
 
 ### Added

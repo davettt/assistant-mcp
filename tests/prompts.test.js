@@ -24,7 +24,7 @@ const toolNames = (text) => text.match(/\b[a-z]+(?:_[a-z]+)+\b/g) ?? [];
 describe('prompts', () => {
   it('name only tools of the apps they need', () => {
     for (const p of PROMPTS) {
-      const apps = p.apps.length ? ALL : ALL.filter((m) => p.apps.includes(m.app.id));
+      const apps = p.apps.length ? ALL.filter((m) => p.apps.includes(m.app.id)) : ALL;
       const known = new Set([...SERVER_TOOLS, ...apps.flatMap((m) => m.tools.map((t) => t.name))]);
       const named = toolNames(p.text({}));
       assert.ok(named.length > 0, `${p.name} names no tools`);
@@ -40,9 +40,17 @@ describe('prompts', () => {
   it('are offered only for installed apps', () => {
     assert.deepEqual(
       promptsFor([budgetPlanner]).map((p) => p.name),
-      ['attention_this_week', 'check_statement', 'review_month_budget'],
+      [
+        'attention_this_week',
+        'check_statement',
+        'review_month_budget',
+        'getting_started',
+        'add_from_text',
+      ],
     );
     assert.deepEqual(promptsFor([]), []);
+    assert.ok(!promptsFor([diagramSnap]).some((p) => p.name === 'note_to_diagram'));
+    assert.ok(promptsFor([diagramSnap, listsAndNotes]).some((p) => p.name === 'note_to_diagram'));
   });
 
   it('read a days argument and fall back on anything else', () => {
@@ -78,8 +86,10 @@ describe('prompts', () => {
     it('lists the prompts for the installed apps', async () => {
       const { prompts } = await client.listPrompts();
       assert.deepEqual(prompts.map((p) => p.name).sort(), [
+        'add_from_text',
         'attention_this_week',
         'check_statement',
+        'getting_started',
         'plan_gifts',
         'review_month_budget',
       ]);
@@ -96,8 +106,10 @@ describe('prompts', () => {
       const routine = tools.find((t) => t.name === 'routine');
       assert.ok(routine, 'routine tool registered');
       assert.deepEqual(routine.inputSchema.properties.name.enum.sort(), [
+        'add_from_text',
         'attention_this_week',
         'check_statement',
+        'getting_started',
         'plan_gifts',
         'review_month_budget',
       ]);
@@ -118,13 +130,37 @@ describe('prompts', () => {
         'https://www.npmjs.com/package/@tiongcreative/assistant-mcp',
       );
       assert.deepEqual(info.routines.names.map((r) => r.name).sort(), [
+        'add_from_text',
         'attention_this_week',
         'check_statement',
+        'getting_started',
         'plan_gifts',
         'review_month_budget',
       ]);
       assert.equal(info.feedback.page, 'https://tiongcreative.com.au/contact/');
-      assert.match(info.feedback.how, /nothing is sent from here/);
+      assert.match(info.feedback.how, /nothing is sent from here/i);
+    });
+
+    it('passes a routine its own argument through the routine tool', async () => {
+      const result = await client.callTool({
+        name: 'routine',
+        arguments: { name: 'plan_gifts', days: '14' },
+      });
+      assert.match(JSON.parse(result.content[0].text).steps, /withinDays 14\b/);
+    });
+
+    it('drafts feedback with the versions and a ready-to-send email link, sending nothing', async () => {
+      const result = await client.callTool({
+        name: 'feedback',
+        arguments: { kind: 'suggestion', summary: 'More routines, for Client Manager too.' },
+      });
+      const body = JSON.parse(result.content[0].text);
+      assert.match(body.draft.subject, /^Assistant suggestion: More routines/);
+      assert.match(body.draft.body, /Versions: assistant-mcp \d+\.\d+\.\d+/);
+      assert.match(body.draft.body, /Budget Planner/);
+      assert.ok(body.email.startsWith('mailto:david@tiongcreative.com.au?subject='));
+      assert.equal(decodeURIComponent(body.email.split('&body=')[1]), body.draft.body);
+      assert.equal(body.page, 'https://tiongcreative.com.au/contact/');
     });
 
     it('sends the common rule about several changes in the instructions', () => {
