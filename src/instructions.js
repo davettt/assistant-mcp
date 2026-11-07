@@ -1,7 +1,7 @@
 // The server's instructions: sent once when the assistant connects, and added to its
 // context by clients that support them (Claude Desktop, Claude Code). They give the map the
 // tool list cannot: which tool does which job, and the rules that hold across apps. Kept
-// short because the client resends them every turn; how an app works belongs elsewhere.
+// short because the client keeps them in context for every message; how an app works belongs elsewhere.
 // Each app module exports its own `instructions` line next to its tools, so a new tool and
 // its line change together, and tests/instructions.test.js checks every tool named exists.
 

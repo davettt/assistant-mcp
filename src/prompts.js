@@ -1,7 +1,7 @@
 // Prompts: starters the user picks from the AI app's menu (in Claude Desktop, + then "Add from tiongcreative"),
 // not something the model sees on its own. Each one holds a whole routine (which tools, in
 // what order, when to stop and ask), which is too long for the instructions the client
-// resends every turn. A prompt is offered only when every app it needs is installed; one
+// keeps in context for every message (sent once, at connect). A prompt is offered only when every app it needs is installed; one
 // with no `apps` needs any app. tests/prompts.test.js checks every tool named exists.
 import { z } from 'zod';
 

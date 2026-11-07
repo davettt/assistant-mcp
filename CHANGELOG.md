@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Code comments and CLAUDE.md now say the server instructions are sent once, when the AI app connects, and the client keeps them in context, where they previously said they were resent every turn; nothing the server does has changed.
+
 ## [0.10.0] - 2026-11-07
 
 ### Added
