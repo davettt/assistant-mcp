@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -71,7 +72,8 @@ describe(
       transport = new StdioClientTransport({
         command: process.execPath,
         args: [SERVER],
-        env: { ...process.env, TC_DATA_ROOT: root },
+        // The standalone server is open throughout, so a missing token file means the switch is off.
+        env: { ...process.env, TC_DATA_ROOT: root, TC_RUNNING_APPS: 'due-again' },
       });
       client = new Client({ name: 'test', version: '0' });
       await client.connect(transport);
@@ -277,3 +279,97 @@ describe(
     });
   },
 );
+
+// Which app answered: a stub stands in for Due Again at the port its assistant.json records,
+// so the health reply's app id can be set per case. The stub keeps every Authorization
+// header it receives, which shows whether the token was sent.
+describe('the app id in the health reply', () => {
+  let root, stub, client, transport;
+  let healthApp; // the app field the stub's /api/health returns; undefined leaves it out
+  const tokensSeen = [];
+  const TOKEN = 'stub-token-123';
+
+  before(async () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-mcp-id-'));
+    stub = http.createServer((req, res) => {
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/api/health') {
+        const body = { status: 'ok', version: '9.9.9' };
+        if (healthApp !== undefined) body.app = healthApp;
+        return res.end(JSON.stringify(body));
+      }
+      if (req.headers.authorization) tokensSeen.push(req.headers.authorization);
+      res.end('[]');
+    });
+    await new Promise((r) => stub.listen(0, '127.0.0.1', r));
+    const dir = path.join(root, 'due-again', 'local_data');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'assistant.json'),
+      JSON.stringify({
+        app: 'due-again',
+        port: stub.address().port,
+        pid: process.pid,
+        version: '9.9.9',
+        token: TOKEN,
+      }),
+    );
+    transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [SERVER],
+      env: { ...process.env, TC_DATA_ROOT: root },
+    });
+    client = new Client({ name: 'test', version: '0' });
+    await client.connect(transport);
+  });
+
+  after(async () => {
+    await client?.close();
+    await new Promise((r) => stub?.close(r));
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  async function itemsCall() {
+    tokensSeen.length = 0;
+    return parse(await client.callTool({ name: 'due_again_items', arguments: {} }));
+  }
+
+  it('connects when the id matches assistant.json', async () => {
+    healthApp = 'due-again';
+    const out = await itemsCall();
+    assert.notEqual(out.available, false, JSON.stringify(out));
+    assert.ok(tokensSeen.includes(`Bearer ${TOKEN}`));
+  });
+
+  it('refuses a different id and never sends the token', async () => {
+    healthApp = 'gift-keeper';
+    const out = await itemsCall();
+    assert.equal(out.available, false);
+    assert.equal(out.reason, 'mismatch');
+    assert.match(out.message, /open_app/);
+    assert.deepEqual(tokensSeen, []);
+    const on = parse(await client.callTool({ name: 'whats_on', arguments: { days: 30 } }));
+    assert.ok(on.unavailable.some((u) => u.app === 'Due Again' && u.reason === 'mismatch'));
+    assert.deepEqual(tokensSeen, []);
+  });
+
+  it('accepts a reply with no id for now (apps add it through checklist item 3)', async () => {
+    healthApp = undefined;
+    const out = await itemsCall();
+    assert.notEqual(out.available, false, JSON.stringify(out));
+    assert.ok(tokensSeen.includes(`Bearer ${TOKEN}`));
+  });
+
+  // The apps remove assistant.json when they quit as well as when the switch goes off, so a
+  // closed app must not be reported as "turn on the setting". This client's env lists no
+  // running apps, so Due Again counts as closed.
+  it('reports a closed app as not open, not as the switch being off', async () => {
+    fs.rmSync(path.join(root, 'due-again', 'local_data', 'assistant.json'));
+    const out = await itemsCall();
+    assert.equal(out.available, false);
+    assert.equal(out.reason, 'not-running');
+    assert.match(out.message, /not open/);
+    const on = parse(await client.callTool({ name: 'whats_on', arguments: { days: 30 } }));
+    assert.ok(on.unavailable.some((u) => u.app === 'Due Again' && u.reason === 'not-running'));
+  });
+});

@@ -1,10 +1,27 @@
 # Changelog
 
-## [Unreleased]
+## [0.11.0] - 2026-11-22
+
+### Added
+
+- `TIONGCREATIVE_APPS` setting: a comma-separated list of app ids (`due-again`, `gift-keeper`, `client-manager`, `lists-and-notes`, `budget-planner`, `diagramsnap`) set in the AI app's server `env` loads only those apps' tools, instructions and routines, so a local model with a small context (for example in LM Studio) can use the assistant. Unset or empty loads every app, so existing setups are unchanged. With only `client-manager`, the server sends 18 tools and about 16,000 characters of tool definitions and instructions, down from 68 tools and about 81,000.
+- The shared tools follow the setting: `whats_on`, `open_app`, `feedback` and `routine` cover only the loaded apps. `assistant_info` adds `appsSetting` (the value and the installed apps it leaves out, kept apart from `notInstalled`), `whats_on` notes the apps left out, and the server instructions add one line naming them so the assistant can say they are switched off on this connection.
+- An id that names no app stops the server with a message listing the valid ids, rather than starting with fewer tools.
+- Tests for the setting (`tests/selection.test.js`), including a server started with only Client Manager.
+- End-to-end tests with a stub server for a matching app id (connects), a different app id (refused, access token never sent) and no app id (accepted for now).
+- Unit tests for recognising an app's main process, and an end-to-end test that a closed app is reported as not open.
+
+### Fixed
+
+- A closed app was reported as having assistant access turned off, and the assistant told the user to turn on the setting instead of offering to open the app. The apps remove their assistant file both on quit and when the switch is off. The server now checks whether the app is running: running with no file means the switch is off, and closed means not running, so the assistant offers `open_app`.
 
 ### Changed
 
+- Hardening: before sending an app's access token, the server checks that the app answering on the recorded port is the one that wrote its `assistant.json`. If the app's `/api/health` reply names a different app, the token is not sent and the app is reported unavailable with a new reason, `mismatch`; the message tells the assistant to ask the user before calling `open_app`. A health reply with no app id is still accepted until every app reports one.
 - Code comments and CLAUDE.md now say the server instructions are sent once, when the AI app connects, and the client keeps them in context, where they previously said they were resent every turn; nothing the server does has changed.
+- `.nvmrc` pinned to Node 24.22.3 to match the build policy.
+- `.github/dependabot.yml` synced with the shared template: 7-day cooldown with `@tiongcreative/*` exempt, and grouped Electron and shared-package updates.
+- New `BACKLOG.md` records two follow-ups: require the app id in `/api/health` once every app sends it, and move `dataRoot()` into `@tiongcreative/platform` once that package exists.
 
 ## [0.10.0] - 2026-11-07
 

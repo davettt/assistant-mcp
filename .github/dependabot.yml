@@ -4,9 +4,26 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    # A new version waits 7 days before Dependabot proposes it: most malicious
+    # publishes are found and pulled within that window.
+    # shared-scope: First-party packages are exempt, so a fix published once
+    # shared-scope: reaches every app in the next run; they are published only
+    # shared-scope: from CI with provenance and promoted by hand with 2FA.
     cooldown:
       default-days: 7
+      exclude: # shared-scope
+        - '@tiongcreative/*'
     ignore:
       - dependency-name: '*'
         update-types: ['version-update:semver-major']
+    # Electron and electron-builder move together, so one PR carries both.
+    # shared-scope: First-party packages arrive as one PR, so a shared fix is one merge.
+    groups:
+      electron:
+        patterns:
+          - 'electron'
+          - 'electron-builder'
+      shared-packages: # shared-scope
+        patterns: # shared-scope
+          - '@tiongcreative/*'
     open-pull-requests-limit: 10

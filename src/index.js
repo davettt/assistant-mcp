@@ -14,6 +14,7 @@ import { ApiError, IMAGES, appConnection, isInstalled, olderThan } from './conne
 import { runCli } from './install.js';
 import { buildInstructions } from './instructions.js';
 import { promptsFor } from './prompts.js';
+import { APPS_VARIABLE, selectApps, unknownAppsMessage } from './selection.js';
 import * as dueAgain from './apps/due-again.js';
 import * as giftKeeper from './apps/gift-keeper.js';
 import * as clientManager from './apps/client-manager.js';
@@ -62,10 +63,20 @@ if (process.argv.length > 2) {
 
 // One entry per app. Add an app by adding a module with the same shape.
 const ALL_APPS = [dueAgain, giftKeeper, clientManager, listsAndNotes, budgetPlanner, diagramSnap];
+// TIONGCREATIVE_APPS can narrow the apps to load (src/selection.js). A wrong id stops the
+// server with a message rather than starting one with fewer tools than the user expects.
+const SELECTION = selectApps(ALL_APPS, process.env[APPS_VARIABLE]);
+if (SELECTION.unknown.length) {
+  console.error(unknownAppsMessage(ALL_APPS, SELECTION.unknown));
+  process.exit(1);
+}
 // Only apps present on this Mac get tools, so the assistant never points the user at an
 // app they do not have. Checked once at start-up: install an app, restart the assistant.
-const APPS = ALL_APPS.filter((a) => isInstalled(a.app));
-const MISSING = ALL_APPS.filter((a) => !isInstalled(a.app)).map((a) => a.app.name);
+const INSTALLED = ALL_APPS.filter((a) => isInstalled(a.app));
+const APPS = SELECTION.chosen.filter((a) => INSTALLED.includes(a));
+const MISSING = ALL_APPS.filter((a) => !INSTALLED.includes(a)).map((a) => a.app.name);
+// Installed here but not loaded, because the setting leaves them out.
+const LEFT_OUT = SELECTION.leftOut.filter((a) => INSTALLED.includes(a)).map((a) => a.app.name);
 // The prompts (and the routine tool's jobs) for the apps installed here.
 const PROMPTS_HERE = promptsFor(APPS);
 
@@ -91,7 +102,7 @@ function failure(err) {
 
 const server = new McpServer(
   { name: 'tiongcreative-assistant', version },
-  { instructions: buildInstructions(APPS) },
+  { instructions: buildInstructions(APPS, LEFT_OUT) },
 );
 
 server.registerTool(
@@ -119,8 +130,13 @@ server.registerTool(
       unavailable,
       ...(APPS.length === 0
         ? {
-            note: `No Tiong Creative apps are installed on this Mac. The assistant works with: ${MISSING.join(', ')}.`,
+            note: SELECTION.setting
+              ? `None of the apps ${APPS_VARIABLE} chooses (${SELECTION.chosen.map((a) => a.app.name).join(', ')}) is installed on this Mac.`
+              : `No Tiong Creative apps are installed on this Mac. The assistant works with: ${MISSING.join(', ')}.`,
           }
+        : {}),
+      ...(LEFT_OUT.length
+        ? { leftOut: `Not loaded on this connection (${APPS_VARIABLE}): ${LEFT_OUT.join(', ')}.` }
         : {}),
     });
   },
@@ -162,6 +178,17 @@ server.registerTool(
       node: process.version,
       apps,
       notInstalled: MISSING,
+      // Installed but not loaded here: the client's setting, not something the user lacks.
+      ...(SELECTION.setting
+        ? {
+            appsSetting: {
+              variable: APPS_VARIABLE,
+              value: SELECTION.setting,
+              leftOut: LEFT_OUT,
+              note: `This connection loads only the apps ${APPS_VARIABLE} names. The apps in leftOut are installed but have no tools here; to use them, the user changes or removes ${APPS_VARIABLE} in the AI app's server settings and restarts it.`,
+            },
+          }
+        : {}),
       // The server calls nothing beyond 127.0.0.1, so it cannot know the latest version
       // itself: it hands over the page that does, for the user or a web-capable assistant.
       latestVersion: {

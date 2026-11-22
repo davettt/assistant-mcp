@@ -14,7 +14,15 @@ const COMMON = [
   'Nothing here deletes. Names (lists, notes, people, clients, categories) match ignoring case; when one does not match, the reply lists what exists, so pick from it or ask the user.',
 ];
 
-/** The instructions text for the apps installed on this Mac. */
-export function buildInstructions(apps) {
-  return [...COMMON, '', ...apps.map((a) => a.instructions).filter(Boolean)].join('\n');
+/**
+ * The instructions text for the apps loaded here. `leftOut` names installed apps that the
+ * TIONGCREATIVE_APPS setting leaves out, so the assistant can say why it has no tools for them.
+ */
+export function buildInstructions(apps, leftOut = []) {
+  const note = leftOut.length
+    ? [
+        `Not loaded on this connection by its settings, though installed: ${leftOut.join(', ')}. For those, tell the user they are switched off here.`,
+      ]
+    : [];
+  return [...COMMON, ...note, '', ...apps.map((a) => a.instructions).filter(Boolean)].join('\n');
 }

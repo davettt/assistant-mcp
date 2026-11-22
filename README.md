@@ -90,6 +90,34 @@ or `npx @tiongcreative/assistant-mcp uninstall chatgpt`. If it stops appearing a
 
 For Claude Code: `claude mcp add tiongcreative -- npx -y @tiongcreative/assistant-mcp`.
 
+### LM Studio and other clients with a small context
+
+LM Studio has no install command here, so add the server to `~/.lmstudio/mcp.json` by hand:
+
+```json
+{
+  "mcpServers": {
+    "tiongcreative": {
+      "command": "npx",
+      "args": ["-y", "@tiongcreative/assistant-mcp"],
+      "env": { "TIONGCREATIVE_APPS": "client-manager" }
+    }
+  }
+}
+```
+
+With every app loaded, the server sends 68 tools, about 81,000 characters, which is more than a local model with a 16k context can hold. Set `TIONGCREATIVE_APPS` in the entry's `env` to load only the apps you want. With only Client Manager loaded, it sends 18 tools and about 16,000 characters.
+
+If Node comes from nvm, use the same launcher `install` writes for Claude Desktop, because LM Studio does not load your shell profile: `~/.nvm/nvm-exec` as the `command`, `npx` as the first entry in `args`, and `"NODE_VERSION": "default"` in `env`.
+
+Restart the server connection in LM Studio after changing the file.
+
+### Choosing which apps load
+
+`TIONGCREATIVE_APPS` is a comma-separated list of app ids: `due-again`, `gift-keeper`, `client-manager`, `lists-and-notes`, `budget-planner`, `diagramsnap`. It works in any client's server `env`, Claude Desktop included. Unset or empty loads every installed app.
+
+The shared tools (`whats_on`, `open_app`, `feedback`, `routine`) then cover only the apps you load, and `assistant_info` lists the installed apps the setting leaves out under `appsSetting`. An id that names no app stops the server with a message listing the valid ids.
+
 ## How it stays on your Mac
 
 - The server opens no network connection of its own. It talks to each app on 127.0.0.1 only.
