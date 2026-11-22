@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- README: the LM Studio section now gives two ways to send fewer tools: `TIONGCREATIVE_APPS`, or the AI app's own per-tool switches where it has them (LM Studio shows a checkbox beside each tool). The example `mcp.json` no longer sets `TIONGCREATIVE_APPS`.
+
 ## [0.11.0] - 2026-11-22
 
 ### Added

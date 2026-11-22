@@ -99,14 +99,16 @@ LM Studio has no install command here, so add the server to `~/.lmstudio/mcp.jso
   "mcpServers": {
     "tiongcreative": {
       "command": "npx",
-      "args": ["-y", "@tiongcreative/assistant-mcp"],
-      "env": { "TIONGCREATIVE_APPS": "client-manager" }
+      "args": ["-y", "@tiongcreative/assistant-mcp"]
     }
   }
 }
 ```
 
-With every app loaded, the server sends 68 tools, about 81,000 characters, which is more than a local model with a 16k context can hold. Set `TIONGCREATIVE_APPS` in the entry's `env` to load only the apps you want. With only Client Manager loaded, it sends 18 tools and about 16,000 characters.
+With every app loaded, the server sends 68 tools, about 81,000 characters, which is more than a local model with a 16k context can hold. There are two ways to send less:
+
+- Set `TIONGCREATIVE_APPS` in the entry's `env` to load only the apps you want (see below), for example `"env": { "TIONGCREATIVE_APPS": "client-manager" }`. With only Client Manager loaded, the server sends 18 tools and about 16,000 characters.
+- Use your AI app's own tool switches, if it has them. LM Studio, for example, lists each server's tools with a checkbox beside each one.
 
 If Node comes from nvm, use the same launcher `install` writes for Claude Desktop, because LM Studio does not load your shell profile: `~/.nvm/nvm-exec` as the `command`, `npx` as the first entry in `args`, and `"NODE_VERSION": "default"` in `env`.
 
